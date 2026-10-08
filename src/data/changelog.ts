@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const changelog: ChangelogRelease[] = [
   {
+    date: '2026-10-08',
+    title: 'Establish OpenHRApp Foundation & Master Project Context',
+    entries: [
+      { type: 'improvement', description: 'Established Company OS master development specification (PROJECT_CONTEXT.md) in the repository root.' },
+      { type: 'improvement', description: 'Added dual support for both VITE_ and NEXT_PUBLIC_ Supabase configuration variables across client services and environment templates.' },
+    ],
+  },
+  {
     date: '2026-08-26',
     title: 'Closed a cross-organization data leak, added a full audit trail, and put anti-spam on registration',
     entries: [

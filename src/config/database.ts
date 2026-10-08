@@ -12,7 +12,9 @@ export const getEnvUrl = () => {
 
   return (
     metaEnv?.VITE_SUPABASE_URL ||
+    metaEnv?.NEXT_PUBLIC_SUPABASE_URL ||
     procEnv?.VITE_SUPABASE_URL ||
+    procEnv?.NEXT_PUBLIC_SUPABASE_URL ||
     ''
   );
 };
