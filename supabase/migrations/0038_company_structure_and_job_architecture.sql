@@ -252,15 +252,19 @@ $$;
 -- 7a. Departments
 alter table public.departments enable row level security;
 
+drop policy if exists "departments_select" on public.departments;
 create policy "departments_select" on public.departments for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "departments_insert" on public.departments;
 create policy "departments_insert" on public.departments for insert with check (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "departments_update" on public.departments;
 create policy "departments_update" on public.departments for update using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "departments_delete" on public.departments;
 create policy "departments_delete" on public.departments for delete using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
@@ -268,15 +272,19 @@ create policy "departments_delete" on public.departments for delete using (
 -- 7b. Roles
 alter table public.roles enable row level security;
 
+drop policy if exists "roles_select" on public.roles;
 create policy "roles_select" on public.roles for select using (
   public.is_super_admin() or organization_id = public.auth_org_id() or organization_id is null
 );
+drop policy if exists "roles_insert" on public.roles;
 create policy "roles_insert" on public.roles for insert with check (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "roles_update" on public.roles;
 create policy "roles_update" on public.roles for update using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR') and not is_system)
 );
+drop policy if exists "roles_delete" on public.roles;
 create policy "roles_delete" on public.roles for delete using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR') and not is_system)
 );
@@ -284,12 +292,15 @@ create policy "roles_delete" on public.roles for delete using (
 -- 7c. Permissions (read-only for all authenticated, manageable by super admin)
 alter table public.permissions enable row level security;
 
+drop policy if exists "permissions_select" on public.permissions;
 create policy "permissions_select" on public.permissions for select using (true);
+drop policy if exists "permissions_modify" on public.permissions;
 create policy "permissions_modify" on public.permissions for all using (public.is_super_admin());
 
 -- 7d. Role Permissions
 alter table public.role_permissions enable row level security;
 
+drop policy if exists "role_permissions_select" on public.role_permissions;
 create policy "role_permissions_select" on public.role_permissions for select using (
   public.is_super_admin() or exists (
     select 1 from public.roles r 
@@ -297,96 +308,117 @@ create policy "role_permissions_select" on public.role_permissions for select us
       and (r.organization_id = public.auth_org_id() or r.organization_id is null)
   )
 );
+drop policy if exists "role_permissions_modify" on public.role_permissions;
 create policy "role_permissions_modify" on public.role_permissions for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 -- 7e. Job Architecture RLS
 alter table public.job_roles enable row level security;
+drop policy if exists "job_roles_select" on public.job_roles;
 create policy "job_roles_select" on public.job_roles for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "job_roles_modify" on public.job_roles;
 create policy "job_roles_modify" on public.job_roles for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_descriptions enable row level security;
+drop policy if exists "job_descriptions_select" on public.job_descriptions;
 create policy "job_descriptions_select" on public.job_descriptions for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr 
     where jr.id = job_descriptions.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_descriptions_modify" on public.job_descriptions;
 create policy "job_descriptions_modify" on public.job_descriptions for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.skills enable row level security;
+drop policy if exists "skills_select" on public.skills;
 create policy "skills_select" on public.skills for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "skills_modify" on public.skills;
 create policy "skills_modify" on public.skills for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.competencies enable row level security;
+drop policy if exists "competencies_select" on public.competencies;
 create policy "competencies_select" on public.competencies for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "competencies_modify" on public.competencies;
 create policy "competencies_modify" on public.competencies for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.kpis enable row level security;
+drop policy if exists "kpis_select" on public.kpis;
 create policy "kpis_select" on public.kpis for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "kpis_modify" on public.kpis;
 create policy "kpis_modify" on public.kpis for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_role_skills enable row level security;
+drop policy if exists "job_role_skills_select" on public.job_role_skills;
 create policy "job_role_skills_select" on public.job_role_skills for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr where jr.id = job_role_skills.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_role_skills_modify" on public.job_role_skills;
 create policy "job_role_skills_modify" on public.job_role_skills for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_role_competencies enable row level security;
+drop policy if exists "job_role_competencies_select" on public.job_role_competencies;
 create policy "job_role_competencies_select" on public.job_role_competencies for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr where jr.id = job_role_competencies.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_role_competencies_modify" on public.job_role_competencies;
 create policy "job_role_competencies_modify" on public.job_role_competencies for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.employee_job_assignments enable row level security;
+drop policy if exists "eja_select" on public.employee_job_assignments;
 create policy "eja_select" on public.employee_job_assignments for select using (
   public.is_super_admin() or exists (
-    select 1 from public.profiles p where p.id = employee_job_assignments.employee_id and p.organization_id = public.auth_org_id()
+    select 1 from public.profiles p where p.id::text = employee_job_assignments.employee_id::text and p.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "eja_modify" on public.employee_job_assignments;
 create policy "eja_modify" on public.employee_job_assignments for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.employee_skills enable row level security;
+drop policy if exists "employee_skills_select" on public.employee_skills;
 create policy "employee_skills_select" on public.employee_skills for select using (
   public.is_super_admin() or exists (
-    select 1 from public.profiles p where p.id = employee_skills.employee_id and p.organization_id = public.auth_org_id()
+    select 1 from public.profiles p where p.id::text = employee_skills.employee_id::text and p.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "employee_skills_insert" on public.employee_skills;
 create policy "employee_skills_insert" on public.employee_skills for insert with check (
-  public.is_super_admin() or employee_id = auth.uid() or public.auth_role() in ('ADMIN','HR','MANAGER')
+  public.is_super_admin() or employee_id::text = auth.uid()::text or public.auth_role() in ('ADMIN','HR','MANAGER')
 );
+drop policy if exists "employee_skills_update" on public.employee_skills;
 create policy "employee_skills_update" on public.employee_skills for update using (
-  public.is_super_admin() or employee_id = auth.uid() or public.auth_role() in ('ADMIN','HR','MANAGER')
+  public.is_super_admin() or employee_id::text = auth.uid()::text or public.auth_role() in ('ADMIN','HR','MANAGER')
 );
+drop policy if exists "employee_skills_delete" on public.employee_skills;
 create policy "employee_skills_delete" on public.employee_skills for delete using (
   public.is_super_admin() or public.auth_role() in ('ADMIN','HR')
 );

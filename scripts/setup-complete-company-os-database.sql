@@ -1,4 +1,14 @@
 -- ============================================================
+-- OpenHRApp / Company OS — Complete Consolidated Database Setup
+-- Idempotent & Fault-Tolerant: Safe to run on fresh or partially migrated DB
+-- Contains all migrations (0001 through 0038)
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- Migration: 0001_initial_schema.sql
+-- ------------------------------------------------------------
+
+-- ============================================================
 -- OpenHRApp — Initial Schema Migration
 -- Migrated from PocketBase → Supabase (PostgreSQL)
 -- 0001_initial_schema.sql
@@ -11,7 +21,7 @@ create extension if not exists "pg_trgm"; -- for text search on names/emails
 -- ============================================================
 -- ORGANIZATIONS (no FK deps — create first)
 -- ============================================================
-create table public.organizations (
+create table if not exists public.organizations (
   id          uuid primary key default uuid_generate_v4(),
   name        text not null,
   country     text not null default 'BD',
@@ -26,13 +36,13 @@ create table public.organizations (
   updated     timestamptz not null default now()
 );
 
-create index idx_organizations_subscription_status on public.organizations(subscription_status);
+create index if not exists idx_organizations_subscription_status on public.organizations(subscription_status);
 
 -- ============================================================
 -- PROFILES (extends auth.users 1-to-1)
 -- PocketBase "users" collection
 -- ============================================================
-create table public.profiles (
+create table if not exists public.profiles (
   id              uuid primary key references auth.users(id) on delete cascade,
   organization_id uuid references public.organizations(id) on delete set null,
   name            text,
@@ -57,14 +67,14 @@ create table public.profiles (
   updated         timestamptz not null default now()
 );
 
-create index idx_profiles_organization_id on public.profiles(organization_id);
-create index idx_profiles_role on public.profiles(role);
-create index idx_profiles_employee_id on public.profiles(organization_id, employee_id);
+create index if not exists idx_profiles_organization_id on public.profiles(organization_id);
+create index if not exists idx_profiles_role on public.profiles(role);
+create index if not exists idx_profiles_employee_id on public.profiles(organization_id, employee_id);
 
 -- ============================================================
 -- TEAMS
 -- ============================================================
-create table public.teams (
+create table if not exists public.teams (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   name            text not null,
@@ -74,16 +84,15 @@ create table public.teams (
   updated         timestamptz not null default now()
 );
 
-create index idx_teams_organization_id on public.teams(organization_id);
+create index if not exists idx_teams_organization_id on public.teams(organization_id);
 
 -- Add FK now that teams table exists
-alter table public.profiles
-  add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null;
+do $ begin alter table public.profiles add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null; exception when duplicate_object then null; end $;
 
 -- ============================================================
 -- SHIFTS
 -- ============================================================
-create table public.shifts (
+create table if not exists public.shifts (
   id                    uuid primary key default uuid_generate_v4(),
   organization_id       uuid not null references public.organizations(id) on delete cascade,
   name                  text not null,
@@ -99,16 +108,15 @@ create table public.shifts (
   updated               timestamptz not null default now()
 );
 
-create index idx_shifts_organization_id on public.shifts(organization_id);
+create index if not exists idx_shifts_organization_id on public.shifts(organization_id);
 
 -- Add FK now that shifts table exists
-alter table public.profiles
-  add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null;
+do $ begin alter table public.profiles add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null; exception when duplicate_object then null; end $;
 
 -- ============================================================
 -- ATTENDANCE
 -- ============================================================
-create table public.attendance (
+create table if not exists public.attendance (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   employee_id     text not null,                           -- denormalized ID string (PB pattern)
@@ -129,14 +137,14 @@ create table public.attendance (
   updated         timestamptz not null default now()
 );
 
-create index idx_attendance_organization_id on public.attendance(organization_id);
-create index idx_attendance_employee_date on public.attendance(organization_id, employee_id, date);
-create index idx_attendance_date on public.attendance(organization_id, date);
+create index if not exists idx_attendance_organization_id on public.attendance(organization_id);
+create index if not exists idx_attendance_employee_date on public.attendance(organization_id, employee_id, date);
+create index if not exists idx_attendance_date on public.attendance(organization_id, date);
 
 -- ============================================================
 -- LEAVES
 -- ============================================================
-create table public.leaves (
+create table if not exists public.leaves (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   employee_id     text not null,
@@ -156,15 +164,15 @@ create table public.leaves (
   updated         timestamptz not null default now()
 );
 
-create index idx_leaves_organization_id on public.leaves(organization_id);
-create index idx_leaves_employee_id on public.leaves(organization_id, employee_id);
-create index idx_leaves_status on public.leaves(organization_id, status);
-create index idx_leaves_start_date on public.leaves(organization_id, start_date);
+create index if not exists idx_leaves_organization_id on public.leaves(organization_id);
+create index if not exists idx_leaves_employee_id on public.leaves(organization_id, employee_id);
+create index if not exists idx_leaves_status on public.leaves(organization_id, status);
+create index if not exists idx_leaves_start_date on public.leaves(organization_id, start_date);
 
 -- ============================================================
 -- ANNOUNCEMENTS
 -- ============================================================
-create table public.announcements (
+create table if not exists public.announcements (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   author_id       uuid references public.profiles(id) on delete set null,
@@ -181,12 +189,12 @@ create table public.announcements (
   updated         timestamptz not null default now()
 );
 
-create index idx_announcements_organization_id on public.announcements(organization_id);
+create index if not exists idx_announcements_organization_id on public.announcements(organization_id);
 
 -- ============================================================
 -- NOTIFICATIONS
 -- ============================================================
-create table public.notifications (
+create table if not exists public.notifications (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid references public.organizations(id) on delete cascade,
   user_id         uuid references public.profiles(id) on delete cascade,
@@ -205,13 +213,13 @@ create table public.notifications (
   updated         timestamptz not null default now()
 );
 
-create index idx_notifications_user_id on public.notifications(user_id, is_read);
-create index idx_notifications_organization_id on public.notifications(organization_id);
+create index if not exists idx_notifications_user_id on public.notifications(user_id, is_read);
+create index if not exists idx_notifications_organization_id on public.notifications(organization_id);
 
 -- ============================================================
 -- SETTINGS (key-value per org)
 -- ============================================================
-create table public.settings (
+create table if not exists public.settings (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   key             text not null,
@@ -221,12 +229,12 @@ create table public.settings (
   unique (organization_id, key)
 );
 
-create index idx_settings_organization_key on public.settings(organization_id, key);
+create index if not exists idx_settings_organization_key on public.settings(organization_id, key);
 
 -- ============================================================
 -- REVIEW CYCLES
 -- ============================================================
-create table public.review_cycles (
+create table if not exists public.review_cycles (
   id                uuid primary key default uuid_generate_v4(),
   organization_id   uuid not null references public.organizations(id) on delete cascade,
   name              text not null,
@@ -240,12 +248,12 @@ create table public.review_cycles (
   updated           timestamptz not null default now()
 );
 
-create index idx_review_cycles_organization_id on public.review_cycles(organization_id);
+create index if not exists idx_review_cycles_organization_id on public.review_cycles(organization_id);
 
 -- ============================================================
 -- PERFORMANCE REVIEWS
 -- ============================================================
-create table public.performance_reviews (
+create table if not exists public.performance_reviews (
   id                  uuid primary key default uuid_generate_v4(),
   organization_id     uuid not null references public.organizations(id) on delete cascade,
   cycle_id            uuid references public.review_cycles(id) on delete set null,
@@ -280,14 +288,14 @@ create table public.performance_reviews (
   updated             timestamptz not null default now()
 );
 
-create index idx_perf_reviews_organization_id on public.performance_reviews(organization_id);
-create index idx_perf_reviews_cycle_id on public.performance_reviews(cycle_id);
-create index idx_perf_reviews_employee_id on public.performance_reviews(organization_id, employee_id);
+create index if not exists idx_perf_reviews_organization_id on public.performance_reviews(organization_id);
+create index if not exists idx_perf_reviews_cycle_id on public.performance_reviews(cycle_id);
+create index if not exists idx_perf_reviews_employee_id on public.performance_reviews(organization_id, employee_id);
 
 -- ============================================================
 -- UPGRADE REQUESTS
 -- ============================================================
-create table public.upgrade_requests (
+create table if not exists public.upgrade_requests (
   id                  uuid primary key default uuid_generate_v4(),
   organization_id     uuid not null references public.organizations(id) on delete cascade,
   request_type        text not null
@@ -307,13 +315,13 @@ create table public.upgrade_requests (
   updated             timestamptz not null default now()
 );
 
-create index idx_upgrade_requests_organization_id on public.upgrade_requests(organization_id);
-create index idx_upgrade_requests_status on public.upgrade_requests(status);
+create index if not exists idx_upgrade_requests_organization_id on public.upgrade_requests(organization_id);
+create index if not exists idx_upgrade_requests_status on public.upgrade_requests(status);
 
 -- ============================================================
 -- BLOG POSTS (public, no org isolation)
 -- ============================================================
-create table public.blog_posts (
+create table if not exists public.blog_posts (
   id          uuid primary key default uuid_generate_v4(),
   author_id   uuid references public.profiles(id) on delete set null,
   author_name text,
@@ -329,13 +337,13 @@ create table public.blog_posts (
   updated     timestamptz not null default now()
 );
 
-create index idx_blog_posts_slug on public.blog_posts(slug);
-create index idx_blog_posts_status on public.blog_posts(status);
+create index if not exists idx_blog_posts_slug on public.blog_posts(slug);
+create index if not exists idx_blog_posts_status on public.blog_posts(status);
 
 -- ============================================================
 -- TUTORIALS
 -- ============================================================
-create table public.tutorials (
+create table if not exists public.tutorials (
   id            uuid primary key default uuid_generate_v4(),
   title         text not null,
   content       text,
@@ -353,13 +361,13 @@ create table public.tutorials (
   updated       timestamptz not null default now()
 );
 
-create index idx_tutorials_slug on public.tutorials(slug);
-create index idx_tutorials_category on public.tutorials(category);
+create index if not exists idx_tutorials_slug on public.tutorials(slug);
+create index if not exists idx_tutorials_category on public.tutorials(category);
 
 -- ============================================================
 -- SHOWCASE ORGANIZATIONS (public landing page)
 -- ============================================================
-create table public.showcase_organizations (
+create table if not exists public.showcase_organizations (
   id            uuid primary key default uuid_generate_v4(),
   name          text not null,
   tagline       text,
@@ -376,7 +384,7 @@ create table public.showcase_organizations (
 -- ============================================================
 -- SOCIAL LINKS (public footer links)
 -- ============================================================
-create table public.social_links (
+create table if not exists public.social_links (
   id            uuid primary key default uuid_generate_v4(),
   platform      text not null,
   url           text not null,
@@ -389,7 +397,7 @@ create table public.social_links (
 -- ============================================================
 -- GUIDE HELP LINKS (in-app help)
 -- ============================================================
-create table public.guide_help_links (
+create table if not exists public.guide_help_links (
   id            uuid primary key default uuid_generate_v4(),
   key           text unique not null,
   value         text,
@@ -400,7 +408,7 @@ create table public.guide_help_links (
 -- ============================================================
 -- CONTENT IMAGES (rich text editor uploads)
 -- ============================================================
-create table public.content_images (
+create table if not exists public.content_images (
   id          uuid primary key default uuid_generate_v4(),
   image       text not null,                              -- storage path
   alt_text    text,
@@ -412,7 +420,7 @@ create table public.content_images (
 -- ============================================================
 -- REPORTS QUEUE (bulk email / async jobs)
 -- ============================================================
-create table public.reports_queue (
+create table if not exists public.reports_queue (
   id              uuid primary key default uuid_generate_v4(),
   organization_id uuid references public.organizations(id) on delete cascade,
   type            text,
@@ -427,8 +435,8 @@ create table public.reports_queue (
   updated         timestamptz not null default now()
 );
 
-create index idx_reports_queue_status on public.reports_queue(status);
-create index idx_reports_queue_organization_id on public.reports_queue(organization_id);
+create index if not exists idx_reports_queue_status on public.reports_queue(status);
+create index if not exists idx_reports_queue_organization_id on public.reports_queue(organization_id);
 
 -- ============================================================
 -- updated_at auto-maintenance trigger
@@ -460,6 +468,11 @@ begin
   end loop;
 end;
 $$;
+
+-- ------------------------------------------------------------
+-- Migration: 0002_rls_policies.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Row Level Security Policies
 -- Mirrors PocketBase listRule / viewRule / createRule / updateRule / deleteRule
@@ -491,15 +504,19 @@ $$;
 -- ============================================================
 alter table public.organizations enable row level security;
 
+drop policy if exists "organizations_select" on public.organizations;
 create policy "organizations_select" on public.organizations for select using (
   public.is_super_admin() or id = public.auth_org_id()
 );
+drop policy if exists "organizations_insert" on public.organizations;
 create policy "organizations_insert" on public.organizations for insert with check (
   public.is_super_admin()
 );
+drop policy if exists "organizations_update" on public.organizations;
 create policy "organizations_update" on public.organizations for update using (
   public.is_super_admin() or id = public.auth_org_id()
 );
+drop policy if exists "organizations_delete" on public.organizations;
 create policy "organizations_delete" on public.organizations for delete using (
   public.is_super_admin()
 );
@@ -510,19 +527,23 @@ create policy "organizations_delete" on public.organizations for delete using (
 -- ============================================================
 alter table public.profiles enable row level security;
 
+drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles for select using (
   public.is_super_admin()
   or organization_id = public.auth_org_id()
   or id = auth.uid()
 );
+drop policy if exists "profiles_insert" on public.profiles;
 create policy "profiles_insert" on public.profiles for insert with check (
   public.is_super_admin()
   or organization_id = public.auth_org_id()
 );
+drop policy if exists "profiles_update" on public.profiles;
 create policy "profiles_update" on public.profiles for update using (
   public.is_super_admin()
   or organization_id = public.auth_org_id()
 );
+drop policy if exists "profiles_delete" on public.profiles;
 create policy "profiles_delete" on public.profiles for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -533,17 +554,21 @@ create policy "profiles_delete" on public.profiles for delete using (
 -- ============================================================
 alter table public.teams enable row level security;
 
+drop policy if exists "teams_select" on public.teams;
 create policy "teams_select" on public.teams for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "teams_insert" on public.teams;
 create policy "teams_insert" on public.teams for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "teams_update" on public.teams;
 create policy "teams_update" on public.teams for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "teams_delete" on public.teams;
 create policy "teams_delete" on public.teams for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -554,17 +579,21 @@ create policy "teams_delete" on public.teams for delete using (
 -- ============================================================
 alter table public.shifts enable row level security;
 
+drop policy if exists "shifts_select" on public.shifts;
 create policy "shifts_select" on public.shifts for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "shifts_insert" on public.shifts;
 create policy "shifts_insert" on public.shifts for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "shifts_update" on public.shifts;
 create policy "shifts_update" on public.shifts for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "shifts_delete" on public.shifts;
 create policy "shifts_delete" on public.shifts for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -575,16 +604,20 @@ create policy "shifts_delete" on public.shifts for delete using (
 -- ============================================================
 alter table public.attendance enable row level security;
 
+drop policy if exists "attendance_select" on public.attendance;
 create policy "attendance_select" on public.attendance for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "attendance_insert" on public.attendance;
 create policy "attendance_insert" on public.attendance for insert with check (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "attendance_update" on public.attendance;
 create policy "attendance_update" on public.attendance for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR','MANAGER'))
 );
+drop policy if exists "attendance_delete" on public.attendance;
 create policy "attendance_delete" on public.attendance for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -595,15 +628,19 @@ create policy "attendance_delete" on public.attendance for delete using (
 -- ============================================================
 alter table public.leaves enable row level security;
 
+drop policy if exists "leaves_select" on public.leaves;
 create policy "leaves_select" on public.leaves for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "leaves_insert" on public.leaves;
 create policy "leaves_insert" on public.leaves for insert with check (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "leaves_update" on public.leaves;
 create policy "leaves_update" on public.leaves for update using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "leaves_delete" on public.leaves;
 create policy "leaves_delete" on public.leaves for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -614,17 +651,21 @@ create policy "leaves_delete" on public.leaves for delete using (
 -- ============================================================
 alter table public.announcements enable row level security;
 
+drop policy if exists "announcements_select" on public.announcements;
 create policy "announcements_select" on public.announcements for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "announcements_insert" on public.announcements;
 create policy "announcements_insert" on public.announcements for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR','MANAGER'))
 );
+drop policy if exists "announcements_update" on public.announcements;
 create policy "announcements_update" on public.announcements for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR','MANAGER'))
 );
+drop policy if exists "announcements_delete" on public.announcements;
 create policy "announcements_delete" on public.announcements for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -635,17 +676,21 @@ create policy "announcements_delete" on public.announcements for delete using (
 -- ============================================================
 alter table public.notifications enable row level security;
 
+drop policy if exists "notifications_select" on public.notifications;
 create policy "notifications_select" on public.notifications for select using (
   public.is_super_admin()
   or user_id = auth.uid()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "notifications_insert" on public.notifications;
 create policy "notifications_insert" on public.notifications for insert with check (
   auth.uid() is not null
 );
+drop policy if exists "notifications_update" on public.notifications;
 create policy "notifications_update" on public.notifications for update using (
   public.is_super_admin() or user_id = auth.uid()
 );
+drop policy if exists "notifications_delete" on public.notifications;
 create policy "notifications_delete" on public.notifications for delete using (
   public.is_super_admin()
   or user_id = auth.uid()
@@ -657,17 +702,21 @@ create policy "notifications_delete" on public.notifications for delete using (
 -- ============================================================
 alter table public.settings enable row level security;
 
+drop policy if exists "settings_select" on public.settings;
 create policy "settings_select" on public.settings for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "settings_insert" on public.settings;
 create policy "settings_insert" on public.settings for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "settings_update" on public.settings;
 create policy "settings_update" on public.settings for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "settings_delete" on public.settings;
 create policy "settings_delete" on public.settings for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() = 'ADMIN')
@@ -678,17 +727,21 @@ create policy "settings_delete" on public.settings for delete using (
 -- ============================================================
 alter table public.review_cycles enable row level security;
 
+drop policy if exists "review_cycles_select" on public.review_cycles;
 create policy "review_cycles_select" on public.review_cycles for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "review_cycles_insert" on public.review_cycles;
 create policy "review_cycles_insert" on public.review_cycles for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "review_cycles_update" on public.review_cycles;
 create policy "review_cycles_update" on public.review_cycles for update using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "review_cycles_delete" on public.review_cycles;
 create policy "review_cycles_delete" on public.review_cycles for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() = 'ADMIN')
@@ -699,15 +752,19 @@ create policy "review_cycles_delete" on public.review_cycles for delete using (
 -- ============================================================
 alter table public.performance_reviews enable row level security;
 
+drop policy if exists "perf_reviews_select" on public.performance_reviews;
 create policy "perf_reviews_select" on public.performance_reviews for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "perf_reviews_insert" on public.performance_reviews;
 create policy "perf_reviews_insert" on public.performance_reviews for insert with check (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "perf_reviews_update" on public.performance_reviews;
 create policy "perf_reviews_update" on public.performance_reviews for update using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "perf_reviews_delete" on public.performance_reviews;
 create policy "perf_reviews_delete" on public.performance_reviews for delete using (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
@@ -719,15 +776,19 @@ create policy "perf_reviews_delete" on public.performance_reviews for delete usi
 -- ============================================================
 alter table public.upgrade_requests enable row level security;
 
+drop policy if exists "upgrade_requests_select" on public.upgrade_requests;
 create policy "upgrade_requests_select" on public.upgrade_requests for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "upgrade_requests_insert" on public.upgrade_requests;
 create policy "upgrade_requests_insert" on public.upgrade_requests for insert with check (
   auth.uid() is not null
 );
+drop policy if exists "upgrade_requests_update" on public.upgrade_requests;
 create policy "upgrade_requests_update" on public.upgrade_requests for update using (
   public.is_super_admin()
 );
+drop policy if exists "upgrade_requests_delete" on public.upgrade_requests;
 create policy "upgrade_requests_delete" on public.upgrade_requests for delete using (
   public.is_super_admin()
 );
@@ -737,15 +798,19 @@ create policy "upgrade_requests_delete" on public.upgrade_requests for delete us
 -- ============================================================
 alter table public.blog_posts enable row level security;
 
+drop policy if exists "blog_posts_select" on public.blog_posts;
 create policy "blog_posts_select" on public.blog_posts for select using (
   status = 'PUBLISHED' or public.is_super_admin() or auth.uid() is not null
 );
+drop policy if exists "blog_posts_insert" on public.blog_posts;
 create policy "blog_posts_insert" on public.blog_posts for insert with check (
   public.is_super_admin()
 );
+drop policy if exists "blog_posts_update" on public.blog_posts;
 create policy "blog_posts_update" on public.blog_posts for update using (
   public.is_super_admin()
 );
+drop policy if exists "blog_posts_delete" on public.blog_posts;
 create policy "blog_posts_delete" on public.blog_posts for delete using (
   public.is_super_admin()
 );
@@ -755,15 +820,19 @@ create policy "blog_posts_delete" on public.blog_posts for delete using (
 -- ============================================================
 alter table public.tutorials enable row level security;
 
+drop policy if exists "tutorials_select" on public.tutorials;
 create policy "tutorials_select" on public.tutorials for select using (
   status = 'PUBLISHED' or public.is_super_admin() or auth.uid() is not null
 );
+drop policy if exists "tutorials_insert" on public.tutorials;
 create policy "tutorials_insert" on public.tutorials for insert with check (
   public.is_super_admin()
 );
+drop policy if exists "tutorials_update" on public.tutorials;
 create policy "tutorials_update" on public.tutorials for update using (
   public.is_super_admin()
 );
+drop policy if exists "tutorials_delete" on public.tutorials;
 create policy "tutorials_delete" on public.tutorials for delete using (
   public.is_super_admin()
 );
@@ -773,7 +842,9 @@ create policy "tutorials_delete" on public.tutorials for delete using (
 -- ============================================================
 alter table public.showcase_organizations enable row level security;
 
+drop policy if exists "showcase_orgs_select" on public.showcase_organizations;
 create policy "showcase_orgs_select" on public.showcase_organizations for select using (true);
+drop policy if exists "showcase_orgs_write" on public.showcase_organizations;
 create policy "showcase_orgs_write" on public.showcase_organizations for all using (
   public.is_super_admin()
 );
@@ -783,7 +854,9 @@ create policy "showcase_orgs_write" on public.showcase_organizations for all usi
 -- ============================================================
 alter table public.social_links enable row level security;
 
+drop policy if exists "social_links_select" on public.social_links;
 create policy "social_links_select" on public.social_links for select using (true);
+drop policy if exists "social_links_write" on public.social_links;
 create policy "social_links_write" on public.social_links for all using (
   public.is_super_admin()
 );
@@ -793,7 +866,9 @@ create policy "social_links_write" on public.social_links for all using (
 -- ============================================================
 alter table public.guide_help_links enable row level security;
 
+drop policy if exists "guide_help_links_select" on public.guide_help_links;
 create policy "guide_help_links_select" on public.guide_help_links for select using (true);
+drop policy if exists "guide_help_links_write" on public.guide_help_links;
 create policy "guide_help_links_write" on public.guide_help_links for all using (
   public.is_super_admin()
 );
@@ -803,15 +878,19 @@ create policy "guide_help_links_write" on public.guide_help_links for all using 
 -- ============================================================
 alter table public.content_images enable row level security;
 
+drop policy if exists "content_images_select" on public.content_images;
 create policy "content_images_select" on public.content_images for select using (
   auth.uid() is not null
 );
+drop policy if exists "content_images_insert" on public.content_images;
 create policy "content_images_insert" on public.content_images for insert with check (
   auth.uid() is not null
 );
+drop policy if exists "content_images_update" on public.content_images;
 create policy "content_images_update" on public.content_images for update using (
   public.is_super_admin()
 );
+drop policy if exists "content_images_delete" on public.content_images;
 create policy "content_images_delete" on public.content_images for delete using (
   public.is_super_admin()
 );
@@ -821,19 +900,28 @@ create policy "content_images_delete" on public.content_images for delete using 
 -- ============================================================
 alter table public.reports_queue enable row level security;
 
+drop policy if exists "reports_queue_select" on public.reports_queue;
 create policy "reports_queue_select" on public.reports_queue for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "reports_queue_insert" on public.reports_queue;
 create policy "reports_queue_insert" on public.reports_queue for insert with check (
   public.is_super_admin()
   or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "reports_queue_update" on public.reports_queue;
 create policy "reports_queue_update" on public.reports_queue for update using (
   public.is_super_admin()
 );
+drop policy if exists "reports_queue_delete" on public.reports_queue;
 create policy "reports_queue_delete" on public.reports_queue for delete using (
   public.is_super_admin()
 );
+
+-- ------------------------------------------------------------
+-- Migration: 0003_auth_hooks.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Auth Hook: Custom JWT Claims
 -- Injects role + organization_id into app_metadata so RLS
@@ -917,9 +1005,14 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_created
-  after insert on auth.users
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ------------------------------------------------------------
+-- Migration: 0004_fix_rls_helpers.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Fix RLS Helper Functions
 -- Replaces JWT app_metadata approach (requires Pro plan hook)
@@ -996,9 +1089,14 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_created
-  after insert on auth.users
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ------------------------------------------------------------
+-- Migration: 0005_storage_buckets.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Storage Buckets + RLS Policies
 -- 0005_storage_buckets.sql
@@ -1016,6 +1114,7 @@ values
 on conflict (id) do nothing;
 
 -- ── avatars (private — user reads own, admin reads org) ──────────────────────
+drop policy if exists "avatars_select" on storage.objects;
 create policy "avatars_select" on storage.objects for select using (
   bucket_id = 'avatars' and (
     public.is_super_admin()
@@ -1023,18 +1122,21 @@ create policy "avatars_select" on storage.objects for select using (
     or public.auth_org_id() is not null  -- any authed org member can view avatars
   )
 );
+drop policy if exists "avatars_insert" on storage.objects;
 create policy "avatars_insert" on storage.objects for insert with check (
   bucket_id = 'avatars' and auth.uid() is not null and (
     (storage.foldername(name))[1] = auth.uid()::text
     or public.auth_role() in ('ADMIN','HR','SUPER_ADMIN')
   )
 );
+drop policy if exists "avatars_update" on storage.objects;
 create policy "avatars_update" on storage.objects for update using (
   bucket_id = 'avatars' and (
     (storage.foldername(name))[1] = auth.uid()::text
     or public.auth_role() in ('ADMIN','HR','SUPER_ADMIN')
   )
 );
+drop policy if exists "avatars_delete" on storage.objects;
 create policy "avatars_delete" on storage.objects for delete using (
   bucket_id = 'avatars' and (
     (storage.foldername(name))[1] = auth.uid()::text
@@ -1043,23 +1145,28 @@ create policy "avatars_delete" on storage.objects for delete using (
 );
 
 -- ── org-logos (public read, ADMIN+ write) ────────────────────────────────────
+drop policy if exists "org_logos_select" on storage.objects;
 create policy "org_logos_select" on storage.objects for select using (
   bucket_id = 'org-logos'
 );
+drop policy if exists "org_logos_insert" on storage.objects;
 create policy "org_logos_insert" on storage.objects for insert with check (
   bucket_id = 'org-logos' and auth.uid() is not null and
   public.auth_role() in ('ADMIN','SUPER_ADMIN')
 );
+drop policy if exists "org_logos_update" on storage.objects;
 create policy "org_logos_update" on storage.objects for update using (
   bucket_id = 'org-logos' and
   public.auth_role() in ('ADMIN','SUPER_ADMIN')
 );
+drop policy if exists "org_logos_delete" on storage.objects;
 create policy "org_logos_delete" on storage.objects for delete using (
   bucket_id = 'org-logos' and
   public.auth_role() in ('ADMIN','SUPER_ADMIN')
 );
 
 -- ── selfies (private — org members with ADMIN/HR/MANAGER read, uploader write)
+drop policy if exists "selfies_select" on storage.objects;
 create policy "selfies_select" on storage.objects for select using (
   bucket_id = 'selfies' and (
     public.is_super_admin()
@@ -1067,60 +1174,78 @@ create policy "selfies_select" on storage.objects for select using (
     or (storage.foldername(name))[1] = auth.uid()::text
   )
 );
+drop policy if exists "selfies_insert" on storage.objects;
 create policy "selfies_insert" on storage.objects for insert with check (
   bucket_id = 'selfies' and auth.uid() is not null
 );
+drop policy if exists "selfies_update" on storage.objects;
 create policy "selfies_update" on storage.objects for update using (
   bucket_id = 'selfies' and (
     (storage.foldername(name))[1] = auth.uid()::text
     or public.auth_role() in ('ADMIN','HR','SUPER_ADMIN')
   )
 );
+drop policy if exists "selfies_delete" on storage.objects;
 create policy "selfies_delete" on storage.objects for delete using (
   bucket_id = 'selfies' and
   public.auth_role() in ('ADMIN','HR','SUPER_ADMIN')
 );
 
 -- ── content-images (public read, authed write) ───────────────────────────────
+drop policy if exists "content_images_select" on storage.objects;
 create policy "content_images_select" on storage.objects for select using (
   bucket_id = 'content-images'
 );
+drop policy if exists "content_images_insert" on storage.objects;
 create policy "content_images_insert" on storage.objects for insert with check (
   bucket_id = 'content-images' and auth.uid() is not null
 );
+drop policy if exists "content_images_update" on storage.objects;
 create policy "content_images_update" on storage.objects for update using (
   bucket_id = 'content-images' and auth.uid() is not null
 );
+drop policy if exists "content_images_delete" on storage.objects;
 create policy "content_images_delete" on storage.objects for delete using (
   bucket_id = 'content-images' and
   public.auth_role() in ('ADMIN','HR','SUPER_ADMIN')
 );
 
 -- ── donation-screenshots (private — uploader + SUPER_ADMIN) ─────────────────
+drop policy if exists "donation_screenshots_select" on storage.objects;
 create policy "donation_screenshots_select" on storage.objects for select using (
   bucket_id = 'donation-screenshots' and (
     public.is_super_admin()
     or public.auth_org_id()::text = (storage.foldername(name))[1]
   )
 );
+drop policy if exists "donation_screenshots_insert" on storage.objects;
 create policy "donation_screenshots_insert" on storage.objects for insert with check (
   bucket_id = 'donation-screenshots' and auth.uid() is not null
 );
+drop policy if exists "donation_screenshots_update" on storage.objects;
 create policy "donation_screenshots_update" on storage.objects for update using (
   bucket_id = 'donation-screenshots' and
   public.auth_role() in ('ADMIN','SUPER_ADMIN')
 );
+drop policy if exists "donation_screenshots_delete" on storage.objects;
 create policy "donation_screenshots_delete" on storage.objects for delete using (
   bucket_id = 'donation-screenshots' and public.is_super_admin()
 );
 
 -- ── showcase-logos (public read, SUPER_ADMIN write) ─────────────────────────
+drop policy if exists "showcase_logos_select" on storage.objects;
 create policy "showcase_logos_select" on storage.objects for select using (
   bucket_id = 'showcase-logos'
 );
+drop policy if exists "showcase_logos_write" on storage.objects;
 create policy "showcase_logos_write" on storage.objects for all using (
   bucket_id = 'showcase-logos' and public.is_super_admin()
 );
+
+-- ------------------------------------------------------------
+-- Migration: 0006_settings_unique_constraint.sql
+-- ------------------------------------------------------------
+
 -- Required for settings upsert onConflict: 'organization_id,key'
 -- Allows null organization_id (platform-level settings like guide_help_links)
 create unique index if not exists idx_settings_org_key
@@ -1130,6 +1255,11 @@ create unique index if not exists idx_settings_org_key
 create unique index if not exists idx_settings_platform_key
   on public.settings (key)
   where organization_id is null;
+
+-- ------------------------------------------------------------
+-- Migration: 0007_attendance_self_update.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Allow employees to update their own attendance rows
 -- 0007_attendance_self_update.sql
@@ -1142,29 +1272,6 @@ create unique index if not exists idx_settings_platform_key
 -- ============================================================
 
 drop policy if exists "attendance_update" on public.attendance;
-
-create policy "attendance_update" on public.attendance for update using (
-  public.is_super_admin()
-  or (
-    organization_id = public.auth_org_id()
-    and (
-      public.auth_role() in ('ADMIN','HR','MANAGER')
-      or employee_id = auth.uid()
-    )
-  )
-);
--- ============================================================
--- OpenHRApp — Fix attendance_update RLS: employee_id is text, auth.uid() is uuid
--- 0008_attendance_self_update_text_cast.sql
---
--- Migration 0007 used `employee_id = auth.uid()` but employee_id is `text`
--- (denormalized PB-style ID string) and auth.uid() is `uuid`. Postgres
--- either errors on the comparison or evaluates to false, so the self-update
--- branch never matches. Cast auth.uid() to text to fix.
--- ============================================================
-
-drop policy if exists "attendance_update" on public.attendance;
-
 create policy "attendance_update" on public.attendance for update using (
   public.is_super_admin()
   or (
@@ -1175,6 +1282,37 @@ create policy "attendance_update" on public.attendance for update using (
     )
   )
 );
+
+-- ------------------------------------------------------------
+-- Migration: 0008_attendance_self_update_text_cast.sql
+-- ------------------------------------------------------------
+
+-- ============================================================
+-- OpenHRApp — Fix attendance_update RLS: employee_id is text, auth.uid() is uuid
+-- 0008_attendance_self_update_text_cast.sql
+--
+-- Migration 0007 used `employee_id = auth.uid()::text` but employee_id is `text`
+-- (denormalized PB-style ID string) and auth.uid() is `uuid`. Postgres
+-- either errors on the comparison or evaluates to false, so the self-update
+-- branch never matches. Cast auth.uid() to text to fix.
+-- ============================================================
+
+drop policy if exists "attendance_update" on public.attendance;
+create policy "attendance_update" on public.attendance for update using (
+  public.is_super_admin()
+  or (
+    organization_id = public.auth_org_id()
+    and (
+      public.auth_role() in ('ADMIN','HR','MANAGER')
+      or employee_id = auth.uid()::text
+    )
+  )
+);
+
+-- ------------------------------------------------------------
+-- Migration: 0009_cron_setup.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Cron Job Setup
 -- 0009_cron_setup.sql
@@ -1197,47 +1335,39 @@ create policy "attendance_update" on public.attendance for update using (
 create extension if not exists pg_net with schema extensions;
 
 -- ============================================================
--- NOTIFICATION CLEANUP — Daily 3 AM UTC
--- Deletes notifications older than 30 days to keep table lean.
--- Retention period can be extended by changing the interval.
+-- CRON SCHEDULES (guarded if pg_cron extension is active)
 -- ============================================================
-select cron.schedule(
-  'notification-cleanup',
-  '0 3 * * *',
-  $$
-    delete from public.notifications
-    where created < now() - interval '30 days';
-  $$
-);
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    -- NOTIFICATION CLEANUP — Daily 3 AM UTC
+    perform cron.schedule(
+      'notification-cleanup',
+      '0 3 * * *',
+      'delete from public.notifications where created < now() - interval ''30 days'';'
+    );
 
--- ============================================================
--- SELFIE CLEANUP — Daily 2 AM UTC
--- Clears selfie storage path on old attendance rows.
--- Note: actual Storage objects are deleted via Edge Function
--- cron-selfie-storage-cleanup (scheduled separately) because
--- Supabase Storage deletion requires service role HTTP call.
--- This SQL step nulls the path reference so the app stops
--- serving broken URLs immediately.
--- ============================================================
-select cron.schedule(
-  'selfie-cleanup',
-  '0 2 * * *',
-  $$
-    update public.attendance
-    set
-      selfie = null,
-      updated = now()
-    where
-      date < current_date - interval '30 days'
-      and selfie is not null;
-  $$
-);
+    -- SELFIE CLEANUP — Daily 2 AM UTC
+    perform cron.schedule(
+      'selfie-cleanup',
+      '0 2 * * *',
+      'update public.attendance set selfie = null, updated = now() where date < current_date - interval ''30 days'' and selfie is not null;'
+    );
+  end if;
+exception when others then null;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- Migration: 0010_contact_submissions.sql
+-- ------------------------------------------------------------
+
 -- Contact form submissions from landing page (public, no auth required)
 -- Anti-spam: rate-limited by email (3/hr, 10/day) via helper function,
 -- honeypot column for bot detection.
 
 -- ── Table ──────────────────────────────────────────────────────────────────────
-create table public.contact_submissions (
+create table if not exists public.contact_submissions (
   id         uuid primary key default uuid_generate_v4(),
   name       text not null,
   email      text not null,
@@ -1247,7 +1377,7 @@ create table public.contact_submissions (
   created    timestamptz not null default now()
 );
 
-create index idx_contact_submissions_email_created
+create index if not exists idx_contact_submissions_email_created
   on public.contact_submissions(email, created);
 
 -- ── Rate-limit helper (SECURITY DEFINER so RLS policy can call it) ──────────────
@@ -1273,15 +1403,20 @@ $$;
 alter table public.contact_submissions enable row level security;
 
 -- Anyone can insert provided: honeypot is empty AND rate limits not exceeded
-create policy "contact_submissions_insert" on public.contact_submissions
-  for insert with check (
+drop policy if exists "contact_submissions_insert" on public.contact_submissions;
+create policy "contact_submissions_insert" on public.contact_submissions for insert with check (
     honeypot = ''
     and public.check_contact_rate_limit(email)
   );
 
 -- Only super admins can read submissions
-create policy "contact_submissions_select" on public.contact_submissions
-  for select using (public.is_super_admin());
+drop policy if exists "contact_submissions_select" on public.contact_submissions;
+create policy "contact_submissions_select" on public.contact_submissions for select using (public.is_super_admin());
+
+-- ------------------------------------------------------------
+-- Migration: 0011_push_subscriptions.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Push Notification Subscriptions
 -- 0011_push_subscriptions.sql
@@ -1290,7 +1425,7 @@ create policy "contact_submissions_select" on public.contact_submissions
 -- One row per user per browser/device. Upsert on endpoint.
 -- ============================================================
 
-create table public.push_subscriptions (
+create table if not exists public.push_subscriptions (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references auth.users(id) on delete cascade,
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -1302,34 +1437,39 @@ create table public.push_subscriptions (
   unique (user_id, endpoint)
 );
 
-create index idx_push_subs_org on public.push_subscriptions(organization_id);
-create index idx_push_subs_user on public.push_subscriptions(user_id);
+create index if not exists idx_push_subs_org on public.push_subscriptions(organization_id);
+create index if not exists idx_push_subs_user on public.push_subscriptions(user_id);
 
 -- RLS
 alter table public.push_subscriptions enable row level security;
 
 -- Users can manage their own subscriptions
-create policy "push_subs_own_select"
-  on public.push_subscriptions for select
+drop policy if exists "push_subs_own_select" on public.push_subscriptions;
+create policy "push_subs_own_select" on public.push_subscriptions for select
   using (auth.uid() = user_id);
 
-create policy "push_subs_own_insert"
-  on public.push_subscriptions for insert
+drop policy if exists "push_subs_own_insert" on public.push_subscriptions;
+create policy "push_subs_own_insert" on public.push_subscriptions for insert
   with check (auth.uid() = user_id);
 
-create policy "push_subs_own_delete"
-  on public.push_subscriptions for delete
+drop policy if exists "push_subs_own_delete" on public.push_subscriptions;
+create policy "push_subs_own_delete" on public.push_subscriptions for delete
   using (auth.uid() = user_id);
 
-create policy "push_subs_own_update"
-  on public.push_subscriptions for update
+drop policy if exists "push_subs_own_update" on public.push_subscriptions;
+create policy "push_subs_own_update" on public.push_subscriptions for update
   using (auth.uid() = user_id);
 
 -- Service role (Edge Functions) can read all
-create policy "push_subs_service_read"
-  on public.push_subscriptions for select
+drop policy if exists "push_subs_service_read" on public.push_subscriptions;
+create policy "push_subs_service_read" on public.push_subscriptions for select
   to service_role
   using (true);
+
+-- ------------------------------------------------------------
+-- Migration: 0012_broadcasts.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Broadcast Audit Log
 -- 0012_broadcasts.sql
@@ -1339,7 +1479,7 @@ create policy "push_subs_service_read"
 -- service-role Edge Function.
 -- ============================================================
 
-create table public.broadcasts (
+create table if not exists public.broadcasts (
   id              uuid primary key default gen_random_uuid(),
   sent_by         uuid not null references auth.users(id) on delete set null,
   sent_by_name    text,
@@ -1356,22 +1496,22 @@ create table public.broadcasts (
   created         timestamptz not null default now()
 );
 
-create index idx_broadcasts_created on public.broadcasts(created desc);
-create index idx_broadcasts_sent_by on public.broadcasts(sent_by);
+create index if not exists idx_broadcasts_created on public.broadcasts(created desc);
+create index if not exists idx_broadcasts_sent_by on public.broadcasts(sent_by);
 
 -- RLS
 alter table public.broadcasts enable row level security;
 
 -- Service role full access (Edge Function writes + reads for history list)
-create policy "broadcasts_service_all"
-  on public.broadcasts for all
+drop policy if exists "broadcasts_service_all" on public.broadcasts;
+create policy "broadcasts_service_all" on public.broadcasts for all
   to service_role
   using (true)
   with check (true);
 
 -- SUPER_ADMIN can read history (role lookup via profiles)
-create policy "broadcasts_superadmin_read"
-  on public.broadcasts for select
+drop policy if exists "broadcasts_superadmin_read" on public.broadcasts;
+create policy "broadcasts_superadmin_read" on public.broadcasts for select
   using (
     exists (
       select 1 from public.profiles p
@@ -1379,6 +1519,11 @@ create policy "broadcasts_superadmin_read"
         and p.role = 'SUPER_ADMIN'
     )
   );
+
+-- ------------------------------------------------------------
+-- Migration: 0013_add_email_to_profiles.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Add email column to profiles
 -- Email is stored in auth.users but not in profiles, so admin
@@ -1432,6 +1577,11 @@ drop trigger if exists on_auth_user_email_change on auth.users;
 create trigger on_auth_user_email_change
   after update of email on auth.users
   for each row execute function public.sync_email_from_auth();
+
+-- ------------------------------------------------------------
+-- Migration: 0014_admin_hr_cross_org_rls.sql
+-- ------------------------------------------------------------
+
 -- Allow ADMIN and HR roles to see attendance/leaves across all organizations,
 -- not just their own. Previously only SUPER_ADMIN had cross-org visibility.
 
@@ -1450,6 +1600,11 @@ create policy "leaves_select" on public.leaves for select using (
   or public.auth_role() in ('ADMIN', 'HR')
   or organization_id = public.auth_org_id()
 );
+
+-- ------------------------------------------------------------
+-- Migration: 0015_notify_super_admins.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Notify Super Admins RPC Function
 -- Allows client code to create notifications for all SUPER_ADMIN
@@ -1516,6 +1671,11 @@ begin
   return;
 end
 $$;
+
+-- ------------------------------------------------------------
+-- Migration: 0016_schedule_selfie_storage_cleanup.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — pg_net Extension for Selfie Storage Cleanup
 -- 0016_schedule_selfie_storage_cleanup.sql
@@ -1542,6 +1702,11 @@ $$;
 
 -- pg_net: enables net.http_post() for calling Edge Functions from pg_cron
 create extension if not exists pg_net with schema extensions;
+
+-- ------------------------------------------------------------
+-- Migration: 0017_add_blog_reading_time.sql
+-- ------------------------------------------------------------
+
 -- Add reading_time column to blog_posts for pre-computed read time
 ALTER TABLE public.blog_posts ADD COLUMN IF NOT EXISTS reading_time INTEGER NOT NULL DEFAULT 1;
 
@@ -1562,20 +1727,45 @@ SET reading_time = GREATEST(1, CEIL(
   ) / 200.0
 ))
 WHERE content IS NOT NULL AND content != '';
+
+-- ------------------------------------------------------------
+-- Migration: 0018_add_blog_category.sql
+-- ------------------------------------------------------------
+
 -- Add category column to blog_posts for content organization
 ALTER TABLE public.blog_posts ADD COLUMN IF NOT EXISTS category text;
+
+-- ------------------------------------------------------------
+-- Migration: 0019_settings_nullable_org_id.sql
+-- ------------------------------------------------------------
+
 -- Ensure organization_id allows NULL for platform-level settings (e.g. super admin theme, guide_help_links).
 -- The partial unique indexes from 0006 already handle both null and non-null conflict resolution;
 -- this migration just makes sure the column accepts NULLs.
 ALTER TABLE public.settings ALTER COLUMN organization_id DROP NOT NULL;
+
+-- ------------------------------------------------------------
+-- Migration: 0020_add_blog_category_index.sql
+-- ------------------------------------------------------------
+
 -- Add index on category column for faster distinct queries and filtering
 CREATE INDEX IF NOT EXISTS idx_blog_posts_category ON public.blog_posts(category);
+
+-- ------------------------------------------------------------
+-- Migration: 0021_add_demo_flag.sql
+-- ------------------------------------------------------------
+
 -- Add demo mode columns to organizations table
 ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS is_demo boolean DEFAULT false;
 ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS demo_reset_at timestamptz;
 
 -- Index for efficient demo-org lookups by cron functions and demo-login
 CREATE INDEX IF NOT EXISTS idx_organizations_is_demo ON public.organizations(is_demo);
+
+-- ------------------------------------------------------------
+-- Migration: 0022_sync_verified_on_email_confirm.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Sync profiles.verified when email is confirmed
 -- When a user clicks the confirmation link, Supabase Auth sets
@@ -1623,6 +1813,11 @@ update public.profiles p
  where p.id = u.id
    and u.email_confirmed_at is not null
    and p.verified = false;
+
+-- ------------------------------------------------------------
+-- Migration: 0023_add_profile_status.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Add status column to profiles
 -- Enables employee lifecycle management: ACTIVE / INACTIVE / ON_LEAVE
@@ -1641,6 +1836,11 @@ update public.profiles set status = 'ACTIVE' where status is null;
 
 -- Index for filtering by status in employee directory queries
 create index if not exists idx_profiles_status on public.profiles(organization_id, status);
+
+-- ------------------------------------------------------------
+-- Migration: 0024_org_showcase_consent.sql
+-- ------------------------------------------------------------
+
 -- Showcase consent — Addendum 4, §5b.
 --
 -- An organization's name and logo may appear in the showcase on the public landing page only
@@ -1714,6 +1914,11 @@ create trigger trg_enforce_showcase_consent
   before update on organizations
   for each row
   execute function enforce_showcase_consent();
+
+-- ------------------------------------------------------------
+-- Migration: 0025_fix_cross_org_rls_leak.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — SECURITY FIX: restore tenant isolation on leaves + attendance
 -- 0025_fix_cross_org_rls_leak.sql
@@ -1744,6 +1949,11 @@ create policy "leaves_select" on public.leaves for select using (
   public.is_super_admin()
   or organization_id = public.auth_org_id()
 );
+
+-- ------------------------------------------------------------
+-- Migration: 0026_audit_logs.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Tamper-resistant audit trail
 -- 0026_audit_logs.sql
@@ -1899,6 +2109,11 @@ begin
   return v_deleted;
 end;
 $$;
+
+-- ------------------------------------------------------------
+-- Migration: 0027_registration_rate_limit.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Registration rate limiting + email lookup index
 -- 0027_registration_rate_limit.sql
@@ -1935,7 +2150,7 @@ alter table public.registration_attempts enable row level security;
 -- storing and before querying, and every stored address is already lowercase,
 -- so the plain index is both usable and correct. Dropped first because an
 -- earlier revision created this name over lower(email), and
--- `create index if not exists` would silently keep the wrong one.
+-- `create index if not exists if not exists` would silently keep the wrong one.
 drop index if exists public.profiles_email_idx;
 create index if not exists profiles_email_idx on public.profiles (email);
 
@@ -1981,6 +2196,11 @@ set search_path = public
 as $$
   delete from public.registration_attempts where created < now() - interval '30 days';
 $$;
+
+-- ------------------------------------------------------------
+-- Migration: 0028_org_hygiene_report.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Organization hygiene report
 -- 0028_org_hygiene_report.sql
@@ -2082,6 +2302,11 @@ $$;
 
 revoke all on function public.org_hygiene_report() from public;
 grant execute on function public.org_hygiene_report() to authenticated;
+
+-- ------------------------------------------------------------
+-- Migration: 0029_ai_email_automation.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — AI lifecycle email automation
 -- 0029_ai_email_automation.sql
@@ -2166,25 +2391,20 @@ alter table public.email_sends        enable row level security;
 alter table public.email_suppressions enable row level security;
 
 drop policy if exists "email_templates_select" on public.email_templates;
-create policy "email_templates_select" on public.email_templates
-  for select using (public.is_super_admin());
+create policy "email_templates_select" on public.email_templates for select using (public.is_super_admin());
 
 -- Templates are the one thing a super admin edits directly from the dashboard.
 drop policy if exists "email_templates_write" on public.email_templates;
-create policy "email_templates_write" on public.email_templates
-  for update using (public.is_super_admin()) with check (public.is_super_admin());
+create policy "email_templates_write" on public.email_templates for update using (public.is_super_admin()) with check (public.is_super_admin());
 
 drop policy if exists "email_sends_select" on public.email_sends;
-create policy "email_sends_select" on public.email_sends
-  for select using (public.is_super_admin());
+create policy "email_sends_select" on public.email_sends for select using (public.is_super_admin());
 
 drop policy if exists "email_suppressions_select" on public.email_suppressions;
-create policy "email_suppressions_select" on public.email_suppressions
-  for select using (public.is_super_admin());
+create policy "email_suppressions_select" on public.email_suppressions for select using (public.is_super_admin());
 
 drop policy if exists "email_suppressions_write" on public.email_suppressions;
-create policy "email_suppressions_write" on public.email_suppressions
-  for all using (public.is_super_admin()) with check (public.is_super_admin());
+create policy "email_suppressions_write" on public.email_suppressions for all using (public.is_super_admin()) with check (public.is_super_admin());
 
 -- email_sends has no write policy on purpose: only the service-role cron
 -- appends to it, so the delivery record cannot be edited from the dashboard.
@@ -2238,6 +2458,11 @@ values
   50
 )
 on conflict (key) do nothing;
+
+-- ------------------------------------------------------------
+-- Migration: 0030_fix_default_llm_model.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Correct the default OpenRouter model slug
 -- 0030_fix_default_llm_model.sql
@@ -2265,6 +2490,11 @@ set    model = 'google/gemma-4-31b-it:free',
        updated = now()
 where  provider = 'openrouter'
   and  model = 'deepseek/deepseek-chat-v3-0324:free';
+
+-- ------------------------------------------------------------
+-- Migration: 0031_schedule_lifecycle_emails.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Schedule for cron-lifecycle-emails
 -- 0031_schedule_lifecycle_emails.sql
@@ -2301,6 +2531,11 @@ where  provider = 'openrouter'
 -- so the schedule is discoverable in the repo rather than only in someone's
 -- browser history.
 select 1;
+
+-- ------------------------------------------------------------
+-- Migration: 0032_ai_admin_reports.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — AI admin reporting: curated views + a contained query runner
 -- 0032_ai_admin_reports.sql
@@ -2491,6 +2726,11 @@ grant execute on function public.ai_admin_query(text) to authenticated;
 
 comment on function public.ai_admin_query(text) is
   'Runs a single read-only SELECT against the ai_reports views as the ai_readonly role. SUPER_ADMIN only. Capped at 200 rows and an 8 second timeout.';
+
+-- ------------------------------------------------------------
+-- Migration: 0033_ai_query_runs_as_caller.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Run AI report queries as the caller, not as the owner
 -- 0033_ai_query_runs_as_caller.sql
@@ -2585,6 +2825,11 @@ begin
     execute 'drop role ai_readonly';
   end if;
 end $$;
+
+-- ------------------------------------------------------------
+-- Migration: 0034_custom_email_templates.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Let super admins create their own email templates
 -- 0034_custom_email_templates.sql
@@ -2619,12 +2864,10 @@ where
 
 -- ── Creating and removing templates ─────────────────────────────────────────
 drop policy if exists "email_templates_insert" on public.email_templates;
-create policy "email_templates_insert" on public.email_templates
-  for insert with check (public.is_super_admin());
+create policy "email_templates_insert" on public.email_templates for insert with check (public.is_super_admin());
 
 drop policy if exists "email_templates_delete" on public.email_templates;
-create policy "email_templates_delete" on public.email_templates
-  for delete using (public.is_super_admin());
+create policy "email_templates_delete" on public.email_templates for delete using (public.is_super_admin());
 
 -- A template key ends up in email_sends as the deduplication key, so it has to
 -- stay stable and URL-safe. Enforced here rather than trusted from the client.
@@ -2639,6 +2882,11 @@ alter table public.email_templates
 -- template; this comment exists so nobody "helpfully" adds one later.
 comment on table public.email_sends is
   'Delivery record. Deliberately has no FK to email_templates: the history of what was sent must survive the template being deleted.';
+
+-- ------------------------------------------------------------
+-- Migration: 0035_more_email_audiences.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — More audiences for lifecycle email
 -- 0035_more_email_audiences.sql
@@ -2674,6 +2922,11 @@ alter table public.email_templates
 
 comment on column public.email_templates.audience is
   'Which group the daily job resolves for this template. For TRIAL_ENDING the stage counts days REMAINING before the trial ends; for DORMANT it counts days since last activity; for everything else it counts days since the qualifying event.';
+
+-- ------------------------------------------------------------
+-- Migration: 0036_seed_templates_with_buttons.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Give the seeded templates a real call to action
 -- 0036_seed_templates_with_buttons.sql
@@ -2724,6 +2977,11 @@ set body_template = '<p>Hi {{admin_name}},</p>'
   || '<p><a href="{{app_url}}" data-btn="amber">Open OpenHRApp</a></p>',
     updated = now()
 where key = 'trial_ending' and body_template not like '%data-btn%';
+
+-- ------------------------------------------------------------
+-- Migration: 0037_natural_email_copy.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp — Make the seeded email copy read like a person wrote it
 -- 0037_natural_email_copy.sql
@@ -2766,6 +3024,11 @@ update public.email_templates
 set body_template = replace(body_template, '>Open OpenHRApp<', '>Open your dashboard<'),
     updated = now()
 where body_template like '%>Open OpenHRApp<%';
+
+-- ------------------------------------------------------------
+-- Migration: 0038_company_structure_and_job_architecture.sql
+-- ------------------------------------------------------------
+
 -- ============================================================
 -- OpenHRApp / Company OS — Phase 1 & 7: Company Structure & Job Architecture
 -- 0038_company_structure_and_job_architecture.sql
@@ -3020,15 +3283,19 @@ $$;
 -- 7a. Departments
 alter table public.departments enable row level security;
 
+drop policy if exists "departments_select" on public.departments;
 create policy "departments_select" on public.departments for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "departments_insert" on public.departments;
 create policy "departments_insert" on public.departments for insert with check (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "departments_update" on public.departments;
 create policy "departments_update" on public.departments for update using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "departments_delete" on public.departments;
 create policy "departments_delete" on public.departments for delete using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
@@ -3036,15 +3303,19 @@ create policy "departments_delete" on public.departments for delete using (
 -- 7b. Roles
 alter table public.roles enable row level security;
 
+drop policy if exists "roles_select" on public.roles;
 create policy "roles_select" on public.roles for select using (
   public.is_super_admin() or organization_id = public.auth_org_id() or organization_id is null
 );
+drop policy if exists "roles_insert" on public.roles;
 create policy "roles_insert" on public.roles for insert with check (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
+drop policy if exists "roles_update" on public.roles;
 create policy "roles_update" on public.roles for update using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR') and not is_system)
 );
+drop policy if exists "roles_delete" on public.roles;
 create policy "roles_delete" on public.roles for delete using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR') and not is_system)
 );
@@ -3052,12 +3323,15 @@ create policy "roles_delete" on public.roles for delete using (
 -- 7c. Permissions (read-only for all authenticated, manageable by super admin)
 alter table public.permissions enable row level security;
 
+drop policy if exists "permissions_select" on public.permissions;
 create policy "permissions_select" on public.permissions for select using (true);
+drop policy if exists "permissions_modify" on public.permissions;
 create policy "permissions_modify" on public.permissions for all using (public.is_super_admin());
 
 -- 7d. Role Permissions
 alter table public.role_permissions enable row level security;
 
+drop policy if exists "role_permissions_select" on public.role_permissions;
 create policy "role_permissions_select" on public.role_permissions for select using (
   public.is_super_admin() or exists (
     select 1 from public.roles r 
@@ -3065,96 +3339,117 @@ create policy "role_permissions_select" on public.role_permissions for select us
       and (r.organization_id = public.auth_org_id() or r.organization_id is null)
   )
 );
+drop policy if exists "role_permissions_modify" on public.role_permissions;
 create policy "role_permissions_modify" on public.role_permissions for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 -- 7e. Job Architecture RLS
 alter table public.job_roles enable row level security;
+drop policy if exists "job_roles_select" on public.job_roles;
 create policy "job_roles_select" on public.job_roles for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "job_roles_modify" on public.job_roles;
 create policy "job_roles_modify" on public.job_roles for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_descriptions enable row level security;
+drop policy if exists "job_descriptions_select" on public.job_descriptions;
 create policy "job_descriptions_select" on public.job_descriptions for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr 
     where jr.id = job_descriptions.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_descriptions_modify" on public.job_descriptions;
 create policy "job_descriptions_modify" on public.job_descriptions for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.skills enable row level security;
+drop policy if exists "skills_select" on public.skills;
 create policy "skills_select" on public.skills for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "skills_modify" on public.skills;
 create policy "skills_modify" on public.skills for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.competencies enable row level security;
+drop policy if exists "competencies_select" on public.competencies;
 create policy "competencies_select" on public.competencies for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "competencies_modify" on public.competencies;
 create policy "competencies_modify" on public.competencies for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.kpis enable row level security;
+drop policy if exists "kpis_select" on public.kpis;
 create policy "kpis_select" on public.kpis for select using (
   public.is_super_admin() or organization_id = public.auth_org_id()
 );
+drop policy if exists "kpis_modify" on public.kpis;
 create policy "kpis_modify" on public.kpis for all using (
   public.is_super_admin() or (organization_id = public.auth_org_id() and public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_role_skills enable row level security;
+drop policy if exists "job_role_skills_select" on public.job_role_skills;
 create policy "job_role_skills_select" on public.job_role_skills for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr where jr.id = job_role_skills.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_role_skills_modify" on public.job_role_skills;
 create policy "job_role_skills_modify" on public.job_role_skills for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.job_role_competencies enable row level security;
+drop policy if exists "job_role_competencies_select" on public.job_role_competencies;
 create policy "job_role_competencies_select" on public.job_role_competencies for select using (
   public.is_super_admin() or exists (
     select 1 from public.job_roles jr where jr.id = job_role_competencies.job_role_id and jr.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "job_role_competencies_modify" on public.job_role_competencies;
 create policy "job_role_competencies_modify" on public.job_role_competencies for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.employee_job_assignments enable row level security;
+drop policy if exists "eja_select" on public.employee_job_assignments;
 create policy "eja_select" on public.employee_job_assignments for select using (
   public.is_super_admin() or exists (
-    select 1 from public.profiles p where p.id = employee_job_assignments.employee_id and p.organization_id = public.auth_org_id()
+    select 1 from public.profiles p where p.id::text = employee_job_assignments.employee_id::text and p.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "eja_modify" on public.employee_job_assignments;
 create policy "eja_modify" on public.employee_job_assignments for all using (
   public.is_super_admin() or (public.auth_role() in ('ADMIN','HR'))
 );
 
 alter table public.employee_skills enable row level security;
+drop policy if exists "employee_skills_select" on public.employee_skills;
 create policy "employee_skills_select" on public.employee_skills for select using (
   public.is_super_admin() or exists (
-    select 1 from public.profiles p where p.id = employee_skills.employee_id and p.organization_id = public.auth_org_id()
+    select 1 from public.profiles p where p.id::text = employee_skills.employee_id::text and p.organization_id = public.auth_org_id()
   )
 );
+drop policy if exists "employee_skills_insert" on public.employee_skills;
 create policy "employee_skills_insert" on public.employee_skills for insert with check (
-  public.is_super_admin() or employee_id = auth.uid() or public.auth_role() in ('ADMIN','HR','MANAGER')
+  public.is_super_admin() or employee_id::text = auth.uid()::text or public.auth_role() in ('ADMIN','HR','MANAGER')
 );
+drop policy if exists "employee_skills_update" on public.employee_skills;
 create policy "employee_skills_update" on public.employee_skills for update using (
-  public.is_super_admin() or employee_id = auth.uid() or public.auth_role() in ('ADMIN','HR','MANAGER')
+  public.is_super_admin() or employee_id::text = auth.uid()::text or public.auth_role() in ('ADMIN','HR','MANAGER')
 );
+drop policy if exists "employee_skills_delete" on public.employee_skills;
 create policy "employee_skills_delete" on public.employee_skills for delete using (
   public.is_super_admin() or public.auth_role() in ('ADMIN','HR')
 );
@@ -3186,3 +3481,4 @@ insert into public.permissions (module, action, code, name, description) values
   ('performance', 'finalize', 'performance:finalize', 'Finalize Reviews', 'Can finalize performance review cycles'),
   ('reports', 'view', 'reports:view', 'View Reports', 'Can view and export analytics reports')
 on conflict (code) do nothing;
+
