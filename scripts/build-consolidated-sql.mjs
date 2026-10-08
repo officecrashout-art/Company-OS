@@ -25,11 +25,11 @@ for (const f of files) {
   // 3. Make constraints in 0001 idempotent
   content = content.replace(
     /alter table public\.profiles\s+add constraint fk_profiles_team_id foreign key \(team_id\) references public\.teams\(id\) on delete set null;/gi,
-    `do $$ begin alter table public.profiles add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null; exception when duplicate_object then null; end $$;`
+    () => `do $$ begin alter table public.profiles add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null; exception when duplicate_object then null; end $$;`
   );
   content = content.replace(
     /alter table public\.profiles\s+add constraint fk_profiles_shift_id foreign key \(shift_id\) references public\.shifts\(id\) on delete set null;/gi,
-    `do $$ begin alter table public.profiles add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null; exception when duplicate_object then null; end $$;`
+    () => `do $$ begin alter table public.profiles add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null; exception when duplicate_object then null; end $$;`
   );
 
   // 4. Ensure triggers have drop trigger if exists beforehand
@@ -59,3 +59,12 @@ for (const f of files) {
 
 fs.writeFileSync('scripts/setup-complete-company-os-database.sql', totalSql);
 console.log(`Successfully generated scripts/setup-complete-company-os-database.sql (${totalSql.length} characters)`);
+
+// Validation: verify no single $ delimiters in DO blocks
+const singleDollarMatches = totalSql.match(/\bdo\s+\$(?!\$)/g) || [];
+const singleDollarEndMatches = totalSql.match(/\bend\s+\$(?!\$);/g) || [];
+if (singleDollarMatches.length > 0 || singleDollarEndMatches.length > 0) {
+  console.error(`WARNING: Found unescaped dollar blocks: do=${singleDollarMatches.length}, end=${singleDollarEndMatches.length}`);
+} else {
+  console.log('Verification PASSED: All DO block dollar signs are properly doubled ($$).');
+}

@@ -87,7 +87,7 @@ create table if not exists public.teams (
 create index if not exists idx_teams_organization_id on public.teams(organization_id);
 
 -- Add FK now that teams table exists
-do $ begin alter table public.profiles add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null; exception when duplicate_object then null; end $;
+do $$ begin alter table public.profiles add constraint fk_profiles_team_id foreign key (team_id) references public.teams(id) on delete set null; exception when duplicate_object then null; end $$;
 
 -- ============================================================
 -- SHIFTS
@@ -111,7 +111,7 @@ create table if not exists public.shifts (
 create index if not exists idx_shifts_organization_id on public.shifts(organization_id);
 
 -- Add FK now that shifts table exists
-do $ begin alter table public.profiles add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null; exception when duplicate_object then null; end $;
+do $$ begin alter table public.profiles add constraint fk_profiles_shift_id foreign key (shift_id) references public.shifts(id) on delete set null; exception when duplicate_object then null; end $$;
 
 -- ============================================================
 -- ATTENDANCE
