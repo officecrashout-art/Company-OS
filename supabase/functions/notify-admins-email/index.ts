@@ -1,0 +1,177 @@
+// OpenHRApp — Notify Admins Email Edge Function
+// Sends email notifications to SUPER_ADMINS or ORG_ADMINS.
+// Called from client-side upgrade.service.ts (which cannot access RESEND_API_KEY).
+// Deno runtime (Supabase Edge Functions)
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const FROM_EMAIL = 'OpenHRApp <noreply@openhrapp.com>';
+
+// ── Main handler ────────────────────────────────────────────────────────────
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ message: 'Method not allowed' }), {
+      status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const resendKey = Deno.env.get('RESEND_API_KEY');
+  if (!resendKey) {
+    return new Response(JSON.stringify({ message: 'Email not configured' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return new Response(JSON.stringify({ message: 'Missing Authorization header' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const supabaseUrl  = Deno.env.get('SUPABASE_URL')!;
+  const serviceRole  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const adminClient  = createClient(supabaseUrl, serviceRole);
+
+  // Verify the caller's JWT
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user: caller }, error: authErr } = await adminClient.auth.getUser(token);
+  if (authErr || !caller) {
+    return new Response(JSON.stringify({ message: 'Invalid token' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const body = await req.json();
+    const target  = body.target as string;   // 'SUPER_ADMINS' | 'ORG_ADMINS'
+    const orgId   = body.orgId as string | undefined;
+    const subject = body.subject as string;
+    const html    = body.html as string;
+
+    if (!target || !subject || !html) {
+      return new Response(JSON.stringify({ message: 'Missing required fields: target, subject, html' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (target === 'ORG_ADMINS' && !orgId) {
+      return new Response(JSON.stringify({ message: 'orgId required for ORG_ADMINS target' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Authorize the caller ─────────────────────────────────────────────
+    // subject and html come straight from the request body and are sent from
+    // the OpenHRApp domain. Verifying only that the caller holds a valid JWT would
+    // let any account mail arbitrary HTML to any organization's admins — a
+    // cross-tenant phishing channel wearing our own From: address.
+    const { data: callerProfile } = await adminClient
+      .from('profiles')
+      .select('role, organization_id')
+      .eq('id', caller.id)
+      .maybeSingle();
+
+    const role = callerProfile?.role ?? '';
+    const isSuper = role === 'SUPER_ADMIN';
+
+    // SUPER_ADMINS: org admins raise upgrade/donation requests this way, so any
+    // org ADMIN/HR may reach the platform operators. That audience is us.
+    // ORG_ADMINS: restricted to the org itself, or a platform operator. This is
+    // the branch that was cross-tenant.
+    const allowed = target === 'SUPER_ADMINS'
+      ? (isSuper || ['ADMIN', 'HR'].includes(role))
+      : (isSuper || (['ADMIN', 'HR'].includes(role) && callerProfile?.organization_id === orgId));
+
+    if (!allowed) {
+      console.warn(`[NotifyAdminsEmail] Unauthorized ${target} send attempted by ${caller.id}`);
+      return new Response(JSON.stringify({ message: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Resolve target profiles ──────────────────────────────────────────
+    let profiles: Array<{ id: string; email: string | null }> = [];
+
+    if (target === 'SUPER_ADMINS') {
+      const { data } = await adminClient
+        .from('profiles')
+        .select('id, email')
+        .eq('role', 'SUPER_ADMIN');
+      profiles = data ?? [];
+    } else if (target === 'ORG_ADMINS') {
+      const { data } = await adminClient
+        .from('profiles')
+        .select('id, email')
+        .eq('organization_id', orgId)
+        .in('role', ['ADMIN', 'HR']);
+      profiles = data ?? [];
+    } else {
+      return new Response(JSON.stringify({ message: `Invalid target: ${target}. Use SUPER_ADMINS or ORG_ADMINS` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (profiles.length === 0) {
+      return new Response(JSON.stringify({ sent: 0, message: 'No recipients found' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Send emails ──────────────────────────────────────────────────────
+    let sent = 0;
+    let failed = 0;
+
+    for (const profile of profiles) {
+      if (!profile.email) {
+        console.warn(`[NotifyAdminsEmail] Profile ${profile.id} has no email — skipping`);
+        continue;
+      }
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: FROM_EMAIL,
+            to: [profile.email],
+            subject,
+            html,
+          }),
+        });
+        if (res.ok) {
+          sent++;
+        } else {
+          failed++;
+          console.error(`[NotifyAdminsEmail] Failed for ${profile.id}: ${res.status} ${await res.text()}`);
+        }
+      } catch (e) {
+        failed++;
+        console.error(`[NotifyAdminsEmail] Error for ${profile.id}:`, e);
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ sent, failed, message: `Sent ${sent}, failed ${failed}` }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+
+  } catch (err) {
+    console.error('[NotifyAdminsEmail] Unhandled error:', err);
+    return new Response(
+      JSON.stringify({ message: 'Internal Server Error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+});

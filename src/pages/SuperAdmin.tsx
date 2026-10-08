@@ -1,0 +1,1006 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Building2, Users, Plus, Edit, Trash2, Eye, RefreshCw, X, Save,
+  TrendingUp, Clock, AlertTriangle, CheckCircle2, UserCheck, Shield,
+  CreditCard, Monitor, HardDrive, FileText, Star, Share2, BookOpen, Bell, HelpCircle, Send, ScrollText, ShieldAlert, Sparkles
+} from 'lucide-react';
+import { superAdminService } from '../services/superadmin.service';
+import { upgradeService } from '../services/upgrade.service';
+import { Organization, Employee, PlatformStats, User, UpgradeRequest } from '../types';
+import AdManagement from '../components/superadmin/AdManagement';
+import StorageManagement from '../components/superadmin/StorageManagement';
+import BlogManagement from '../components/superadmin/BlogManagement';
+import TutorialManagement from '../components/superadmin/TutorialManagement';
+import ShowcaseManagement from '../components/superadmin/ShowcaseManagement';
+import SocialLinksManagement from '../components/superadmin/SocialLinksManagement';
+import NotificationRetention from '../components/superadmin/NotificationRetention';
+import GuideLinksManagement from '../components/superadmin/GuideLinksManagement';
+import PushBroadcast from '../components/superadmin/PushBroadcast';
+import AuditLog from '../components/superadmin/AuditLog';
+import OrgHygienePanel from '../components/superadmin/OrgHygiene';
+import AIEmail from '../components/superadmin/AIEmail';
+
+interface SuperAdminProps {
+  user: User;
+  onNavigate: (path: string) => void;
+}
+
+type ViewMode = 'list' | 'create' | 'edit' | 'users';
+type TabMode = 'organizations' | 'requests' | 'hygiene' | 'audit' | 'ai-email' | 'ads' | 'storage' | 'notifications' | 'broadcast' | 'blog' | 'tutorials' | 'guides' | 'showcase' | 'social';
+
+const SuperAdmin: React.FC<SuperAdminProps> = () => {
+  const [activeTab, setActiveTab] = useState<TabMode>('organizations');
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  const [orgUsers, setOrgUsers] = useState<Employee[]>([]);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Upgrade requests state
+  const [upgradeRequests, setUpgradeRequests] = useState<UpgradeRequest[]>([]);
+  const [requestsFilter, setRequestsFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | ''>('PENDING');
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    address: '',
+    subscriptionStatus: 'TRIAL',
+    trialEndDate: '',
+    showOnLanding: false,
+    adminName: '',
+    adminEmail: '',
+    adminPassword: ''
+  });
+
+  useEffect(() => {
+    loadData();
+    // Also load upgrade requests count for badge
+    loadUpgradeRequests();
+  }, []);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const [orgsData, statsData] = await Promise.all([
+      superAdminService.getAllOrganizations(),
+      superAdminService.getPlatformStats()
+    ]);
+    setOrganizations(orgsData);
+    setStats(statsData);
+    setIsLoading(false);
+  };
+
+  const loadUpgradeRequests = async () => {
+    const requests = await upgradeService.getAllRequests(requestsFilter);
+    setUpgradeRequests(requests);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'requests') {
+      loadUpgradeRequests();
+    }
+  }, [activeTab, requestsFilter]);
+
+  const handleProcessRequest = async (requestId: string, action: 'APPROVED' | 'REJECTED', notes?: string, days?: number) => {
+    setIsLoading(true);
+    const result = await upgradeService.processRequest(requestId, action, notes, days);
+    if (result.success) {
+      setMessage({ type: 'success', text: result.message });
+      await loadUpgradeRequests();
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+    setIsLoading(false);
+  };
+
+  const handleCreateOrg = async () => {
+    if (!formData.name || !formData.adminName || !formData.adminEmail || !formData.adminPassword) {
+      setMessage({ type: 'error', text: 'Please fill in all required fields' });
+      return;
+    }
+
+    if (formData.adminPassword.length < 8) {
+      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await superAdminService.createOrganization(formData);
+
+    if (result.success) {
+      setMessage({ type: 'success', text: result.message });
+      setViewMode('list');
+      setFormData({ name: '', address: '', subscriptionStatus: 'TRIAL', trialEndDate: '', showOnLanding: false, adminName: '', adminEmail: '', adminPassword: '' });
+      await loadData();
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+    setIsLoading(false);
+  };
+
+  const handleUpdateOrg = async () => {
+    if (!selectedOrg) return;
+
+    setIsLoading(true);
+    const result = await superAdminService.updateOrganization(selectedOrg.id, {
+      name: formData.name,
+      address: formData.address,
+      subscriptionStatus: formData.subscriptionStatus as any,
+      trialEndDate: formData.trialEndDate || undefined,
+      showOnLanding: formData.showOnLanding
+    });
+
+    if (result.success) {
+      setMessage({ type: 'success', text: result.message });
+      setViewMode('list');
+      setSelectedOrg(null);
+      await loadData();
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+    setIsLoading(false);
+  };
+
+  const handleDeleteOrg = async (org: Organization) => {
+    if (!confirm(`Are you sure you want to delete "${org.name}"?\n\nThis will permanently delete:\n- All users (${org.userCount || 0})\n- All attendance records\n- All leave records\n- All settings\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await superAdminService.deleteOrganization(org.id);
+
+    if (result.success) {
+      setMessage({ type: 'success', text: result.message });
+      await loadData();
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+    setIsLoading(false);
+  };
+
+  const handleViewUsers = async (org: Organization) => {
+    setSelectedOrg(org);
+    setIsLoading(true);
+    const users = await superAdminService.getOrganizationUsers(org.id);
+    setOrgUsers(users);
+    setViewMode('users');
+    setIsLoading(false);
+  };
+
+  const handleVerifyUser = async (userId: string) => {
+    const result = await superAdminService.verifyUser(userId);
+    if (result.success) {
+      setMessage({ type: 'success', text: 'User verified successfully' });
+      if (selectedOrg) {
+        const users = await superAdminService.getOrganizationUsers(selectedOrg.id);
+        setOrgUsers(users);
+      }
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`Are you sure you want to delete user "${userName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    const result = await superAdminService.deleteUser(userId);
+    if (result.success) {
+      setMessage({ type: 'success', text: 'User deleted successfully' });
+      if (selectedOrg) {
+        const users = await superAdminService.getOrganizationUsers(selectedOrg.id);
+        setOrgUsers(users);
+      }
+    } else {
+      setMessage({ type: 'error', text: result.message });
+    }
+  };
+
+  const openEditMode = (org: Organization) => {
+    setSelectedOrg(org);
+    // Format trial end date for input (YYYY-MM-DD)
+    let trialEndDateFormatted = '';
+    if (org.trialEndDate) {
+      try {
+        trialEndDateFormatted = new Date(org.trialEndDate).toISOString().split('T')[0];
+      } catch {
+        trialEndDateFormatted = '';
+      }
+    }
+    setFormData({
+      name: org.name,
+      address: org.address || '',
+      subscriptionStatus: org.subscriptionStatus || 'TRIAL',
+      trialEndDate: trialEndDateFormatted,
+      showOnLanding: org.showOnLanding === true,
+      adminName: '',
+      adminEmail: '',
+      adminPassword: ''
+    });
+    setViewMode('edit');
+  };
+
+  const openCreateMode = () => {
+    // Default trial end date to 14 days from now
+    const defaultTrialEnd = new Date();
+    defaultTrialEnd.setDate(defaultTrialEnd.getDate() + 14);
+    setFormData({
+      name: '',
+      address: '',
+      subscriptionStatus: 'TRIAL',
+      trialEndDate: defaultTrialEnd.toISOString().split('T')[0],
+      showOnLanding: false,
+      adminName: '',
+      adminEmail: '',
+      adminPassword: ''
+    });
+    setViewMode('create');
+  };
+
+  const getStatusBadge = (status: string) => {
+    const styles: Record<string, string> = {
+      ACTIVE: 'bg-emerald-100 text-emerald-700',
+      TRIAL: 'bg-amber-100 text-amber-700',
+      EXPIRED: 'bg-red-100 text-red-700',
+      SUSPENDED: 'bg-slate-100 text-slate-700'
+    };
+    return styles[status] || styles.TRIAL;
+  };
+
+  // Clear message after 5 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight flex items-center gap-3">
+            <Shield className="text-primary shrink-0" size={28} />
+            <span className="truncate">Super Admin Dashboard</span>
+          </h1>
+          <p className="text-slate-500 mt-1 text-sm sm:text-base">Manage all organizations on the platform</p>
+        </div>
+        {activeTab === 'organizations' && viewMode === 'list' && (
+          <button
+            onClick={openCreateMode}
+            className="self-start sm:self-auto px-5 sm:px-6 py-3 bg-primary text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-primary-hover transition-all shadow-lg whitespace-nowrap"
+          >
+            <Plus size={20} /> New Organization
+          </button>
+        )}
+        {activeTab === 'organizations' && viewMode !== 'list' && (
+          <button
+            onClick={() => { setViewMode('list'); setSelectedOrg(null); }}
+            className="self-start sm:self-auto px-5 sm:px-6 py-3 bg-slate-100 text-slate-700 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all whitespace-nowrap"
+          >
+            <X size={20} /> Back to List
+          </button>
+        )}
+      </div>
+
+      {/* Message */}
+      {message && (
+        <div className={`p-4 rounded-2xl flex items-center gap-3 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+          {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+          <span className="font-medium">{message.text}</span>
+        </div>
+      )}
+
+      {/* Main Tabs */}
+      <div className="space-y-2">
+        {/* Row 1 — Platform Management */}
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">Platform</p>
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 sm:gap-2 p-1 bg-slate-100 rounded-xl">
+            <button
+              onClick={() => { setActiveTab('organizations'); setViewMode('list'); }}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 relative ${
+                activeTab === 'organizations' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Building2 size={16} className="shrink-0" /> <span className="hidden sm:inline">Orgs</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 relative ${
+                activeTab === 'requests' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <CreditCard size={16} className="shrink-0" /> <span className="hidden sm:inline">Upgrades</span>
+              {upgradeRequests.filter(r => r.status === 'PENDING').length > 0 && (
+                <span className="absolute -top-1 -right-1 sm:static w-5 h-5 sm:w-auto sm:h-auto px-1 sm:px-2 py-0.5 bg-red-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center">
+                  {upgradeRequests.filter(r => r.status === 'PENDING').length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('hygiene')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 relative ${
+                activeTab === 'hygiene' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <ShieldAlert size={16} className="shrink-0" /> <span className="hidden sm:inline">Review</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 relative ${
+                activeTab === 'audit' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <ScrollText size={16} className="shrink-0" /> <span className="hidden sm:inline">Audit</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('ai-email')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 relative ${
+                activeTab === 'ai-email' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Sparkles size={16} className="shrink-0" /> <span className="hidden sm:inline">Email</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('ads')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'ads' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Monitor size={16} className="shrink-0" /> <span className="hidden sm:inline">Ads</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('storage')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'storage' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <HardDrive size={16} className="shrink-0" /> <span className="hidden sm:inline">Storage</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'notifications' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Bell size={16} className="shrink-0" /> <span className="hidden sm:inline">Notifs</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('broadcast')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'broadcast' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Send size={16} className="shrink-0" /> <span className="hidden sm:inline">Push</span>
+            </button>
+          </div>
+        </div>
+        {/* Row 2 — Content Management */}
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">Content</p>
+          <div className="grid grid-cols-5 gap-1 sm:gap-2 p-1 bg-slate-100 rounded-xl">
+            <button
+              onClick={() => setActiveTab('blog')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'blog' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <FileText size={16} className="shrink-0" /> <span className="hidden sm:inline">Blog</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('tutorials')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'tutorials' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <BookOpen size={16} className="shrink-0" /> <span className="hidden sm:inline">Tutorials</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'guides' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <HelpCircle size={16} className="shrink-0" /> <span className="hidden sm:inline">Guides</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('showcase')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'showcase' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Star size={16} className="shrink-0" /> <span className="hidden sm:inline">Showcase</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('social')}
+              className={`py-3 px-1 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                activeTab === 'social' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Share2 size={16} className="shrink-0" /> <span className="hidden sm:inline">Social</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Email Tab */}
+      {activeTab === 'ai-email' && (
+        <AIEmail />
+      )}
+
+      {/* Organization Review Tab */}
+      {activeTab === 'hygiene' && (
+        <OrgHygienePanel />
+      )}
+
+      {/* Audit Trail Tab */}
+      {activeTab === 'audit' && (
+        <AuditLog organizations={organizations} />
+      )}
+
+      {/* Upgrade Requests Tab */}
+      {activeTab === 'requests' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-slate-900">Upgrade Requests</h3>
+            <div className="flex gap-2">
+              {['PENDING', 'APPROVED', 'REJECTED', ''].map(filter => (
+                <button
+                  key={filter || 'all'}
+                  onClick={() => setRequestsFilter(filter as any)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    requestsFilter === filter
+                      ? 'bg-primary text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {filter || 'All'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-12 text-slate-400">Loading...</div>
+          ) : upgradeRequests.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-slate-100">
+              <CreditCard size={48} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-500 font-medium">No upgrade requests found</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {upgradeRequests.map(req => (
+                <div key={req.id} className="bg-white rounded-2xl border border-slate-100 p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h4 className="font-bold text-slate-900">{req.organizationName}</h4>
+                      <p className="text-sm text-slate-500">
+                        {req.requestType === 'DONATION' && `Donation: $${req.donationAmount} (${req.donationTier})`}
+                        {req.requestType === 'TRIAL_EXTENSION' && `Extension: ${req.extensionDays} days`}
+                        {req.requestType === 'AD_SUPPORTED' && 'Ad-Supported Mode'}
+                      </p>
+                      {req.donationReference && (
+                        <p className="text-xs text-slate-400 mt-1">Ref: {req.donationReference}</p>
+                      )}
+                      {req.extensionReason && (
+                        <p className="text-xs text-slate-400 mt-1">Reason: {req.extensionReason}</p>
+                      )}
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      req.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                      req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {req.status}
+                    </span>
+                  </div>
+
+                  {req.status === 'PENDING' && (
+                    <div className="flex gap-2 pt-4 border-t border-slate-100">
+                      <button
+                        onClick={() => handleProcessRequest(req.id, 'APPROVED')}
+                        className="flex-1 py-2 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary-hover transition-all"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleProcessRequest(req.id, 'REJECTED')}
+                        className="flex-1 py-2 bg-red-100 text-red-700 rounded-xl font-bold text-sm hover:bg-red-200 transition-all"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-400 mt-3">
+                    Submitted: {new Date(req.created || '').toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ad Management Tab */}
+      {activeTab === 'ads' && (
+        <AdManagement onMessage={setMessage} />
+      )}
+
+      {/* Storage Management Tab */}
+      {activeTab === 'storage' && (
+        <StorageManagement onMessage={setMessage} />
+      )}
+
+      {/* Notification Retention Tab */}
+      {activeTab === 'notifications' && (
+        <NotificationRetention onMessage={setMessage} />
+      )}
+
+      {/* Bulk Email Tab */}
+
+      {/* Push Broadcast Tab */}
+      {activeTab === 'broadcast' && (
+        <PushBroadcast onMessage={setMessage} />
+      )}
+
+      {/* Blog Management Tab */}
+      {activeTab === 'blog' && (
+        <BlogManagement onMessage={setMessage} />
+      )}
+
+      {/* Tutorial Management Tab */}
+      {activeTab === 'tutorials' && (
+        <TutorialManagement onMessage={setMessage} />
+      )}
+
+      {/* Guide Links Management Tab */}
+      {activeTab === 'guides' && (
+        <GuideLinksManagement onMessage={setMessage} />
+      )}
+
+      {/* Showcase Management Tab */}
+      {activeTab === 'showcase' && (
+        <ShowcaseManagement onMessage={setMessage} />
+      )}
+
+      {/* Social Links Management Tab */}
+      {activeTab === 'social' && (
+        <SocialLinksManagement onMessage={setMessage} />
+      )}
+
+
+      {/* Organizations Tab - Stats Cards */}
+      {activeTab === 'organizations' && viewMode === 'list' && stats && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary-light rounded-xl">
+                <Building2 size={20} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.totalOrganizations}</p>
+                <p className="text-xs text-slate-500 font-medium">Total Orgs</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-xl">
+                <Users size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.totalUsers}</p>
+                <p className="text-xs text-slate-500 font-medium">Total Users</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 rounded-xl">
+                <CheckCircle2 size={20} className="text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.activeOrganizations}</p>
+                <p className="text-xs text-slate-500 font-medium">Active</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-xl">
+                <Clock size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.trialOrganizations}</p>
+                <p className="text-xs text-slate-500 font-medium">Trial</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-xl">
+                <AlertTriangle size={20} className="text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.expiredOrganizations}</p>
+                <p className="text-xs text-slate-500 font-medium">Expired</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-violet-100 rounded-xl">
+                <TrendingUp size={20} className="text-violet-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold text-slate-900">{stats.recentRegistrations}</p>
+                <p className="text-xs text-slate-500 font-medium">Last 30d</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Organization List */}
+      {activeTab === 'organizations' && viewMode === 'list' && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">All Organizations</h2>
+            <button onClick={loadData} disabled={isLoading} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+              <RefreshCw size={20} className={`text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="p-12 text-center text-slate-500">Loading organizations...</div>
+          ) : organizations.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">No organizations found</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Organization</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Users</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Admin</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Created</th>
+                    <th className="text-right p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {organizations.map((org) => (
+                    <tr key={org.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary-light rounded-xl flex items-center justify-center">
+                            <Building2 size={20} className="text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{org.name}</p>
+                            {org.address && <p className="text-xs text-slate-500">{org.address}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold inline-block w-fit ${getStatusBadge(org.subscriptionStatus || 'TRIAL')}`}>
+                            {org.subscriptionStatus || 'TRIAL'}
+                          </span>
+                          {org.subscriptionStatus === 'TRIAL' && org.trialEndDate && (
+                            <span className="text-xs text-slate-400">
+                              Ends: {new Date(org.trialEndDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="font-bold text-slate-700">{org.userCount || 0}</span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm text-slate-600">{org.adminEmail || '-'}</span>
+                          {org.adminEmail && (
+                            org.adminVerified ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                                <CheckCircle2 size={12} /> Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600">
+                                <Clock size={12} /> Pending verification
+                              </span>
+                            )
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-sm text-slate-500">
+                          {org.created ? new Date(org.created).toLocaleDateString() : '-'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleViewUsers(org)}
+                            className="p-2 hover:bg-blue-100 rounded-xl transition-all"
+                            title="View Users"
+                          >
+                            <Eye size={18} className="text-blue-600" />
+                          </button>
+                          <button
+                            onClick={() => openEditMode(org)}
+                            className="p-2 hover:bg-amber-100 rounded-xl transition-all"
+                            title="Edit"
+                          >
+                            <Edit size={18} className="text-amber-600" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteOrg(org)}
+                            className="p-2 hover:bg-red-100 rounded-xl transition-all"
+                            title="Delete"
+                          >
+                            <Trash2 size={18} className="text-red-600" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create/Edit Form */}
+      {activeTab === 'organizations' && (viewMode === 'create' || viewMode === 'edit') && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+          <h2 className="text-xl font-bold text-slate-900 mb-6">
+            {viewMode === 'create' ? 'Create New Organization' : `Edit: ${selectedOrg?.name}`}
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Organization Name *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                placeholder="e.g., Acme Corporation"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Subscription Status</label>
+              <select
+                value={formData.subscriptionStatus}
+                onChange={(e) => setFormData({ ...formData, subscriptionStatus: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+              >
+                <option value="TRIAL">Trial — ad-free period</option>
+                <option value="AD_SUPPORTED">Ad Supported — free, ads shown</option>
+                <option value="ACTIVE">Active — donated, ad-free</option>
+                <option value="EXPIRED">Expired — read-only</option>
+                <option value="SUSPENDED">Suspended</option>
+              </select>
+            </div>
+
+            {formData.subscriptionStatus === 'TRIAL' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Trial End Date</label>
+                <input
+                  type="date"
+                  value={formData.trialEndDate}
+                  onChange={(e) => setFormData({ ...formData, trialEndDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                />
+                <p className="text-xs text-slate-400">After this date the organization moves to Ad Supported. Nothing is disabled — ads simply start.</p>
+              </div>
+            )}
+
+            <div className={`space-y-2 ${formData.subscriptionStatus === 'TRIAL' ? '' : 'md:col-span-2'}`}>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Address</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                placeholder="e.g., 123 Business Street, City"
+              />
+            </div>
+
+            {/*
+              Showcase consent (Addendum 4 §5b). The organization's own ADMIN opts in from
+              Organization & Setup → System; this mirror exists for consent obtained out of
+              band — by email or contract — and to let a super admin withdraw it. The database
+              trigger stamps landing_consent_at and refuses demo organizations either way.
+            */}
+            {viewMode === 'edit' && (
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="sa-show-on-landing"
+                  className="flex items-start gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:border-primary-light transition-colors"
+                >
+                  <input
+                    id="sa-show-on-landing"
+                    type="checkbox"
+                    checked={formData.showOnLanding}
+                    onChange={(e) => setFormData({ ...formData, showOnLanding: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary-light cursor-pointer"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-slate-700">Show in landing-page showcase</span>
+                    <span className="block mt-1 text-xs font-medium text-slate-500 leading-relaxed">
+                      Only tick this if the organization has actually agreed — their name and logo
+                      go on the public homepage. Normally they opt in themselves from Organization
+                      &amp; Setup.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {viewMode === 'create' && (
+              <>
+                <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
+                  <h3 className="font-bold text-slate-700 mb-4">Initial Admin Account</h3>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Admin Name *</label>
+                  <input
+                    type="text"
+                    value={formData.adminName}
+                    onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                    placeholder="e.g., John Smith"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Admin Email *</label>
+                  <input
+                    type="email"
+                    value={formData.adminEmail}
+                    onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                    placeholder="e.g., admin@company.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Admin Password *</label>
+                  <input
+                    type="password"
+                    value={formData.adminPassword}
+                    onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-primary-light outline-none"
+                    placeholder="Min. 8 characters"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-4 mt-8 pt-6 border-t border-slate-100">
+            <button
+              onClick={() => { setViewMode('list'); setSelectedOrg(null); }}
+              className="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={viewMode === 'create' ? handleCreateOrg : handleUpdateOrg}
+              disabled={isLoading}
+              className="px-6 py-3 bg-primary text-white rounded-xl font-bold flex items-center gap-2 hover:bg-primary-hover transition-all disabled:opacity-50"
+            >
+              <Save size={18} />
+              {viewMode === 'create' ? 'Create Organization' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Users View */}
+      {activeTab === 'organizations' && viewMode === 'users' && selectedOrg && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-900">
+              Users in {selectedOrg.name}
+            </h2>
+            <p className="text-sm text-slate-500">{orgUsers.length} users</p>
+          </div>
+
+          {isLoading ? (
+            <div className="p-12 text-center text-slate-500">Loading users...</div>
+          ) : orgUsers.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">No users found</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Department</th>
+                    <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="text-right p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orgUsers.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} className="w-10 h-10 rounded-full object-cover" />
+                            ) : (
+                              <Users size={20} className="text-slate-400" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{u.name}</p>
+                            <p className="text-xs text-slate-500">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : u.role === 'HR' ? 'bg-blue-100 text-blue-700' : u.role === 'MANAGER' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-sm text-slate-600">{u.department}</span>
+                      </td>
+                      <td className="p-4">
+                        {(u as any).verified ? (
+                          <span className="text-emerald-600 flex items-center gap-1 text-sm">
+                            <CheckCircle2 size={14} /> Verified
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 flex items-center gap-1 text-sm">
+                            <Clock size={14} /> Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {!(u as any).verified && (
+                            <button
+                              onClick={() => handleVerifyUser(u.id)}
+                              className="p-2 hover:bg-emerald-100 rounded-xl transition-all"
+                              title="Verify User"
+                            >
+                              <UserCheck size={18} className="text-emerald-600" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteUser(u.id, u.name)}
+                            className="p-2 hover:bg-red-100 rounded-xl transition-all"
+                            title="Delete User"
+                          >
+                            <Trash2 size={18} className="text-red-600" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SuperAdmin;

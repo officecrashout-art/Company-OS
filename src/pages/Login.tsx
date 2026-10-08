@@ -1,0 +1,666 @@
+
+declare global {
+  interface Window {
+    PasswordCredential: typeof PasswordCredential;
+  }
+  interface PasswordCredentialData {
+    id: string;
+    password: string;
+    name?: string;
+    iconURL?: string;
+  }
+  class PasswordCredential extends Credential {
+    constructor(data: PasswordCredentialData);
+    readonly password: string;
+  }
+}
+
+import React, { useState, useEffect } from 'react';
+import { Mail, Lock, ArrowRight, AlertCircle, RefreshCw, Eye, EyeOff, Download, X, Share, MoreVertical, RotateCcw, Building2, Send, Home, CheckCircle2 } from 'lucide-react';
+import { hrService } from '../services/hrService';
+import { authService } from '../services/auth.service';
+import { isSupabaseConfigured } from '../services/supabase';
+import { useToast } from '../context/ToastContext';
+
+interface LoginProps {
+  onLoginSuccess: (user: any) => void;
+  onRegisterClick: () => void;
+  onBackToLanding?: () => void;
+  initError?: string;
+}
+
+const BrandLogo = () => (
+  <div className="flex flex-col items-center justify-center gap-6">
+    <div className="relative w-24 h-24 md:w-32 md:h-32">
+      <div className="absolute inset-0 bg-primary-light blur-[50px] rounded-full -z-10 opacity-50"></div>
+      <div className="relative w-full h-full bg-white rounded-[1.75rem] shadow-xl flex items-center justify-center p-4 border-2 border-primary/20">
+        <img
+          src="/img/logo.webp"
+          className="w-full h-full object-contain"
+          alt="OpenHRApp Logo"
+        />
+      </div>
+    </div>
+    <div className="text-center">
+      <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter flex items-center justify-center">
+        <span className="text-primary">Open</span>
+        <span className="text-[#f59e0b]">HR</span>
+        <span className="text-[#10b981]">App</span>
+      </h1>
+      <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-1">Personnel Gateway</p>
+    </div>
+  </div>
+);
+
+const Login: React.FC<LoginProps> = ({ onLoginSuccess, onRegisterClick, onBackToLanding, initError }) => {
+  const { showToast } = useToast();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(initError || '');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showResend, setShowResend] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
+  const [forgotError, setForgotError] = useState('');
+
+  // Install Help State
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [canPrompt, setCanPrompt] = useState(false);
+  
+  const isConfigured = isSupabaseConfigured();
+
+  useEffect(() => {
+    // 1. Detect platform
+    // iOS: only Safari-based browsers on Apple devices
+    // Mobile: Android, HarmonyOS (Honor/Huawei), or any other mobile device
+    const ua = navigator.userAgent;
+    const ios = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+    const mobile = /Android|HarmonyOS|webOS|BlackBerry|Opera Mini|IEMobile|Mobile/i.test(ua) || ios;
+    setIsIOS(ios);
+    setIsMobile(mobile);
+
+    // 2. Check if already installed as PWA (standalone mode)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    setIsInstalled(isStandalone);
+
+    // 3. Check Native Prompt Status (Immediate)
+    if ((window as any).deferredPWAPrompt) {
+      setCanPrompt(true);
+    }
+
+    // 4. Listen for Native Prompt Event (Async)
+    const handlePwaReady = () => setCanPrompt(true);
+    window.addEventListener('pwa-install-available', handlePwaReady);
+
+    return () => window.removeEventListener('pwa-install-available', handlePwaReady);
+  }, []);
+
+  const handleInstallClick = async () => {
+    // 1. Try Native Prompt First (Android/Desktop Chrome)
+    const promptEvent = (window as any).deferredPWAPrompt;
+
+    if (promptEvent) {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      console.log(`User response to install prompt: ${outcome}`);
+
+      if (outcome === 'accepted') {
+        (window as any).deferredPWAPrompt = null;
+        setCanPrompt(false);
+      }
+    } else {
+      // 2. Fallback: Show instructions
+      // On iOS: show Safari share instructions
+      // On Android (non-Chrome browsers like Honor): show browser menu instructions
+      setShowInstallHelp(true);
+    }
+  };
+
+  // Full "nuclear" reset — destroys every client-side trace of the app so a
+  // post-migration stale cache (Workbox precache, Supabase auth IndexedDB,
+  // stale subscription ref, etc.) cannot survive into the next session.
+  // Steps run in best-effort order; any individual failure must not block the
+  // final reload.
+  const handleSystemReset = async () => {
+    if (!confirm("Reset App Cache? This will sign you out and reload the app.")) return;
+    try {
+      // 1. Wipe Workbox / runtime caches (the SW unregister below does NOT
+      //    clear these — they live independently in CacheStorage).
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k).catch(() => false)));
+      }
+      // 2. Unregister every service worker.
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister().catch(() => false)));
+      }
+      // 3. Drop every IndexedDB database (Supabase auth lives here on some
+      //    browsers; clearing it ensures a fully fresh session).
+      if ('indexedDB' in window && (indexedDB as any).databases) {
+        try {
+          const dbs: { name?: string }[] = await (indexedDB as any).databases();
+          await Promise.all(
+            dbs.map(db =>
+              db.name
+                ? new Promise<void>((res) => {
+                    const req = indexedDB.deleteDatabase(db.name!);
+                    req.onsuccess = req.onerror = req.onblocked = () => res();
+                  })
+                : Promise.resolve()
+            )
+          );
+        } catch { /* indexedDB.databases() not supported on Safari < 14 */ }
+      }
+      // 4. Wipe web storage.
+      try { localStorage.clear(); } catch { /* private mode */ }
+      try { sessionStorage.clear(); } catch { /* private mode */ }
+    } finally {
+      // 5. Hard reload with a cache-bust query so the HTML shell itself is
+      //    re-requested from the network.
+      window.location.replace(window.location.pathname + '?_=' + Date.now());
+    }
+  };
+
+  // Non-destructive sibling of the Reset button: ask the active service
+  // worker to check for a new build. If one is waiting, vite-plugin-pwa's
+  // controllerchange handler will reload the page automatically; otherwise
+  // the user gets a toast that they are already current.
+  const handleCheckForUpdates = async () => {
+    if (!('serviceWorker' in navigator)) {
+      showToast('Service workers not supported in this browser.', 'error');
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) {
+        showToast('App is not installed as a PWA.', 'info');
+        return;
+      }
+      await reg.update();
+      if (reg.waiting) {
+        showToast('Update found — reloading…', 'success');
+        // Ask the waiting SW to take over; controllerchange triggers reload.
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } else {
+        showToast('You are on the latest version.', 'success');
+      }
+    } catch (err: any) {
+      console.error('[Login] Update check failed:', err);
+      showToast('Could not check for updates.', 'error');
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    try {
+      const result = await hrService.requestVerificationEmail(email);
+      showToast(result.message || "A new verification link has been sent to your email.", result.success ? "success" : "info");
+      if (result.success && result.message.includes('already verified')) {
+        // Account is already confirmed — clear the error so user can retry login
+        setError("");
+      }
+      setShowResend(false);
+    } catch (e) {
+      showToast("Failed to send verification email.", "error");
+    }
+  };
+
+  // Trigger iOS Safari / WKWebView "Save Password" via hidden form submission.
+  //
+  // Why this works:
+  //   Safari only triggers the password save dialog on a real form navigation,
+  //   not on XHR/fetch-only logins. We create a hidden form targeting a hidden
+  //   iframe and submit it. The iframe absorbs the resulting 404.
+  //
+  // iOS PWA (standalone) specifics:
+  //   WKWebView requires the form to be rendered (painted) for at least one
+  //   animation frame before submission, otherwise credential detection is skipped.
+  //   We also set the iframe src to about:blank first so WKWebView treats it as
+  //   a valid navigation target (empty iframes can be ignored in standalone mode).
+  //
+  // IMPORTANT: This must be called BEFORE onLoginSuccess triggers a route change,
+  //   otherwise the login form's DOM context is lost and Safari won't associate
+  //   the credentials with this page. We wrap onLoginSuccess in the rAF callback
+  //   so the form is submitted first, then login completes.
+  const triggerSafariPasswordSave = (onComplete: () => void) => {
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.name = 'safari-password-save';
+      iframe.src = 'about:blank';
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(iframe);
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      // Use the current page URL so Safari associates saved credentials with this origin.
+      // The iframe absorbs the navigation; the 405/404 response doesn't matter.
+      form.action = window.location.href;
+      form.target = 'safari-password-save';
+      form.autocomplete = 'on';
+
+      const emailInput = document.createElement('input');
+      emailInput.type = 'email';
+      emailInput.name = 'username';
+      emailInput.autocomplete = 'username';
+      emailInput.value = email;
+      form.appendChild(emailInput);
+
+      const pwInput = document.createElement('input');
+      pwInput.type = 'password';
+      pwInput.name = 'password';
+      pwInput.autocomplete = 'current-password';
+      pwInput.value = password;
+      form.appendChild(pwInput);
+
+      document.body.appendChild(form);
+
+      // Hand control back to React immediately — the dashboard transition is
+      // now off the critical path. The form submission still runs (in the
+      // same tick) so Safari sees the keystrokes-on-form and offers to save
+      // credentials; we just don't gate the navigation on rAF anymore.
+      // Previously double-rAF blocked onComplete for 30–100ms on slow iOS
+      // devices.
+      try { form.submit(); } catch { /* iframe may absorb error */ }
+      onComplete();
+      setTimeout(() => {
+        try { form.remove(); } catch { /* already gone */ }
+        try { iframe.remove(); } catch { /* already gone */ }
+      }, 3000);
+    } catch (_) {
+      // If anything fails, still complete login
+      onComplete();
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotStatus('loading');
+    const result = await authService.requestPasswordReset(forgotEmail);
+    if (result.ok) {
+      setForgotStatus('sent');
+    } else {
+      setForgotError(result.error || 'Could not send reset email. Try again.');
+      setForgotStatus('error');
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isConfigured) {
+      setError(`CRITICAL: Backend is not configured.`);
+      return;
+    }
+    setIsLoading(true);
+    setError('');
+    setShowResend(false);
+
+    try {
+      const result = await hrService.login(email, password);
+      if (result.user) {
+        // Detect iOS: all iOS browsers use WebKit, so PasswordCredential is never
+        // truly supported even if the global exists (e.g. Chrome on iOS is WKWebView).
+        const ua = navigator.userAgent;
+        const isIOSDevice = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+
+        // "Save Password" — two strategies by platform:
+        //   1. Chrome/Edge/Android browser & PWA: Credential Management API
+        //   2. iOS Safari & iOS PWA (standalone): hidden form submission trick
+        //
+        // For iOS: the hidden form MUST be submitted while the login page DOM is
+        // still mounted. If we call onLoginSuccess first, React unmounts the page
+        // and Safari loses the credential context. So on iOS we submit the form
+        // first (via rAF) and call onLoginSuccess in the completion callback.
+        // For non-iOS: we complete login first, then save credentials async.
+
+        if (isIOSDevice) {
+          triggerSafariPasswordSave(() => {
+            onLoginSuccess(result.user!);
+          });
+        } else {
+          onLoginSuccess(result.user);
+
+          setTimeout(() => {
+            try {
+              if (window.PasswordCredential) {
+                const cred = new window.PasswordCredential({
+                  id: email,
+                  password: password,
+                  name: result.user!.name || email,
+                });
+                navigator.credentials.store(cred).catch(() => {});
+              }
+            } catch (_) { /* Silently ignore */ }
+          }, 300);
+        }
+      } else {
+        const msg = result.error || 'Verification Failed. Check credentials.';
+        setError(msg);
+        if (msg.toLowerCase().includes('verified') || msg.toLowerCase().includes('verification')) {
+          setShowResend(true);
+        }
+      }
+    } catch (err: any) {
+      setError(`System Error: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full flex flex-col bg-[#f8fafc] items-center justify-center p-4 relative overflow-hidden">
+      {/* Dynamic Background */}
+      <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary-light blur-[100px] rounded-full -z-10"></div>
+      <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-teal-500/5 blur-[100px] rounded-full -z-10"></div>
+      
+      <div className="w-full max-w-[400px] animate-in fade-in zoom-in duration-500">
+        <div className="bg-white md:shadow-[0_8px_30px_rgb(0,0,0,0.04)] md:border border-slate-100 rounded-xl overflow-hidden">
+          
+          <div className="p-8 md:p-12 space-y-10">
+            {/* Brand Header */}
+            <BrandLogo />
+
+            {/* Forgot Password Flow */}
+            {showForgot ? (
+              <div className="space-y-6">
+                {forgotStatus === 'sent' ? (
+                  <div className="flex flex-col items-center gap-5 text-center py-2">
+                    <div className="p-4 bg-emerald-50 rounded-full">
+                      <CheckCircle2 size={36} className="text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Check your email</p>
+                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                        A password reset link was sent to <span className="font-bold text-slate-600">{forgotEmail}</span>. Check spam if you don't see it.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(false); setForgotStatus('idle'); setForgotEmail(''); setForgotError(''); }}
+                      className="w-full py-4 bg-primary text-white rounded-xl font-semibold text-xs uppercase tracking-[0.2em] shadow-sm hover:bg-primary-hover active:scale-[0.97] transition-all flex items-center justify-center gap-3"
+                    >
+                      Back to Login <ArrowRight size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleForgotPassword} className="space-y-5">
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-semibold text-slate-800">Reset Password</p>
+                      <p className="text-xs text-slate-400">Enter your email and we'll send a reset link.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest px-1">Organization Email</label>
+                      <div className="relative group">
+                        <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors z-10" size={18} />
+                        <input
+                          type="email"
+                          required
+                          autoComplete="email"
+                          className="w-full pl-14 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary-light placeholder:text-slate-300"
+                          placeholder="e.g. name@company.com"
+                          value={forgotEmail}
+                          onChange={e => setForgotEmail(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {forgotStatus === 'error' && (
+                      <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
+                        <AlertCircle size={14} className="flex-shrink-0" />
+                        <span>{forgotError}</span>
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={forgotStatus === 'loading'}
+                      className="w-full py-4 bg-primary text-white rounded-xl font-semibold text-xs uppercase tracking-[0.2em] shadow-sm hover:bg-primary-hover active:scale-[0.97] transition-all flex items-center justify-center gap-3 disabled:opacity-70"
+                    >
+                      {forgotStatus === 'loading' ? <RefreshCw className="animate-spin" size={18} /> : <>Send Reset Link <ArrowRight size={16} /></>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(false); setForgotStatus('idle'); setForgotError(''); }}
+                      className="w-full py-2.5 text-slate-400 text-[10px] font-semibold uppercase tracking-widest hover:text-primary transition-colors"
+                    >
+                      Back to Login
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : (
+            <form onSubmit={handleLogin} className="space-y-6" autoComplete="on" method="post" action=".">
+              <div className="space-y-5">
+                <div className="space-y-1.5">
+                  <label htmlFor="login-email" className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest px-1">Organization Email</label>
+                  <div className="relative group">
+                    <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors z-10" size={18} />
+                    <input
+                      id="login-email"
+                      type="email"
+                      name="email"
+                      autoComplete="username"
+                      required
+                      className="w-full pl-14 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary-light placeholder:text-slate-300"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="e.g. name@company.com"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label htmlFor="login-password" className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest px-1">Security Credentials</label>
+                  <div className="relative group">
+                    <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors z-10" size={18} />
+                    <input
+                      id="login-password"
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      autoComplete="current-password"
+                      required
+                      className="w-full pl-14 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary-light placeholder:text-slate-300"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Your secret key"
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)} 
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-primary transition-colors z-10 p-1"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 animate-in shake space-y-2">
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-3 text-[10px] font-semibold uppercase tracking-wider">
+                    <div className="flex items-center gap-3">
+                      <AlertCircle size={14} className="flex-shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                    {showResend && (
+                      <button
+                        type="button"
+                        onClick={handleResendVerification}
+                        className="ml-auto flex items-center gap-1 bg-white px-2 py-1 rounded-md shadow-sm text-rose-600 hover:text-rose-800 transition-colors"
+                      >
+                        <Send size={10} /> Resend Link
+                      </button>
+                    )}
+                  </div>
+                  {showResend && (
+                    <p className="text-[11px] font-medium normal-case tracking-normal text-rose-500/90 leading-snug">
+                      Already requested a link? <span className="font-bold">Check your spam or junk folder</span> before resending — verification emails from <span className="font-mono">noreply@openhrapp.com</span> sometimes land there.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-4 bg-primary text-white rounded-xl font-semibold text-xs uppercase tracking-[0.2em] shadow-sm hover:bg-primary-hover active:scale-[0.97] transition-all flex items-center justify-center gap-3 disabled:opacity-70 mt-2"
+                >
+                  {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <>Continue <ArrowRight size={16} /></>}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowForgot(true); setForgotEmail(email); setForgotStatus('idle'); setForgotError(''); }}
+                  className="w-full py-2 text-slate-400 text-[10px] font-semibold uppercase tracking-widest hover:text-primary transition-colors"
+                >
+                  Forgot Password?
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onRegisterClick}
+                  className="w-full py-3 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl font-semibold text-[10px] uppercase tracking-widest hover:bg-white hover:border-slate-300 transition-all flex items-center justify-center gap-2"
+                >
+                  <Building2 size={14} /> Register New Organization
+                </button>
+
+                {/* Back to Home */}
+                {onBackToLanding && (
+                  <button
+                    type="button"
+                    onClick={onBackToLanding}
+                    className="w-full py-2.5 text-slate-400 text-[10px] font-semibold uppercase tracking-widest hover:text-primary transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Home size={12} /> Back to Home
+                  </button>
+                )}
+
+                {/* Utils Row: Install & Reset */}
+                <div className="flex justify-center items-center gap-4 pt-4 border-t border-slate-50">
+                   {!isInstalled && (
+                   <button
+                     type="button"
+                     onClick={handleInstallClick}
+                     className="flex items-center gap-2 px-4 py-2 text-slate-400 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:text-primary transition-colors"
+                   >
+                     <Download size={12} /> {isIOS && !canPrompt ? 'App Guide' : 'Install App'}
+                   </button>
+                   )}
+
+                   <div className="w-px h-3 bg-slate-200"></div>
+
+                   <button
+                     type="button"
+                     onClick={handleCheckForUpdates}
+                     className="flex items-center gap-2 px-4 py-2 text-slate-400 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:text-primary transition-colors"
+                     title="Check for app updates without signing out"
+                   >
+                     <RefreshCw size={12} /> Updates
+                   </button>
+
+                   <div className="w-px h-3 bg-slate-200"></div>
+
+                   <button
+                     type="button"
+                     onClick={handleSystemReset}
+                     className="flex items-center gap-2 px-4 py-2 text-slate-400 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:text-rose-600 transition-colors"
+                     title="Clear all app data and reload (destructive — signs you out)"
+                   >
+                     <RotateCcw size={12} /> Reset Cache
+                   </button>
+                </div>
+              </div>
+            </form>
+            )} {/* end showForgot */}
+          </div>
+        </div>
+
+        {/* System Version */}
+        <p className="text-center mt-6 text-[8px] font-semibold text-slate-300 uppercase tracking-[0.4em]">v3.0 Multi-Tenant</p>
+      </div>
+
+      {/* Database Connection Indicator */}
+      <div className="fixed top-6 right-6 hidden md:flex items-center gap-2 bg-white/80 backdrop-blur-md px-4 py-1.5 rounded-full border border-slate-100 shadow-sm">
+        <div className={`w-1.5 h-1.5 rounded-full ${isConfigured ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`}></div>
+        <span className="text-[8px] font-semibold uppercase text-slate-500 tracking-[0.2em]">{isConfigured ? 'Node Connected' : 'No Connection'}</span>
+      </div>
+
+      {/* Installation Instructions Popup */}
+      {showInstallHelp && (
+        <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+           <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-xl animate-in slide-in-from-bottom-10 border border-slate-100">
+              <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                   <Download size={16} className="text-primary"/> Install Guide
+                 </h3>
+                 <button onClick={() => setShowInstallHelp(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-900 transition-colors"><X size={16}/></button>
+              </div>
+              
+              {isIOS ? (
+                <div className="space-y-5">
+                   <p className="text-xs font-medium text-slate-500 leading-relaxed">To install this app on your iPhone or iPad, please follow these steps:</p>
+                   <div className="space-y-3">
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-blue-500"><Share size={18} /></div>
+                         <div className="text-xs font-bold text-slate-700">1. Tap the <span className="text-blue-600">Share</span> button in Safari</div>
+                      </div>
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-slate-900 font-semibold text-[10px]">+</div>
+                         <div className="text-xs font-bold text-slate-700">2. Select <span className="text-slate-900">Add to Home Screen</span></div>
+                      </div>
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-slate-900 font-semibold text-[10px]">Add</div>
+                         <div className="text-xs font-bold text-slate-700">3. Tap <span className="text-blue-600">Add</span> (top right)</div>
+                      </div>
+                   </div>
+                </div>
+              ) : isMobile ? (
+                <div className="space-y-5">
+                   <p className="text-xs font-medium text-slate-500 leading-relaxed">For the best experience, open this page in <span className="text-slate-900 font-bold">Google Chrome</span> browser. If you are already using Chrome or another browser, follow these steps:</p>
+                   <div className="space-y-3">
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-slate-600"><MoreVertical size={18} /></div>
+                         <div className="text-xs font-bold text-slate-700">1. Tap the <span className="text-slate-900">Menu</span> button (⋮ or ⋯)</div>
+                      </div>
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-primary"><Download size={18} /></div>
+                         <div className="text-xs font-bold text-slate-700">2. Look for <span className="text-slate-900">Install App</span>, <span className="text-slate-900">Add to Home Screen</span>, or <span className="text-slate-900">Add shortcut</span></div>
+                      </div>
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-emerald-500 font-semibold text-[10px]">✓</div>
+                         <div className="text-xs font-bold text-slate-700">3. Confirm and the app will be added to your <span className="text-slate-900">Home Screen</span></div>
+                      </div>
+                   </div>
+
+                </div>
+              ) : (
+                <div className="space-y-5">
+                   <p className="text-xs font-medium text-slate-500 leading-relaxed">If the automatic prompt didn't appear, you can install manually:</p>
+                   <div className="space-y-3">
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-slate-600"><MoreVertical size={18} /></div>
+                         <div className="text-xs font-bold text-slate-700">1. Click the <span className="text-slate-900">Browser Menu</span> (⋮ three dots)</div>
+                      </div>
+                      <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl">
+                         <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-primary"><Download size={18} /></div>
+                         <div className="text-xs font-bold text-slate-700">2. Select <span className="text-slate-900">Install App</span> or <span className="text-slate-900">Install OpenHRApp</span></div>
+                      </div>
+                   </div>
+                </div>
+              )}
+              
+              <button onClick={() => setShowInstallHelp(false)} className="w-full mt-6 py-4 bg-primary text-white rounded-2xl font-semibold uppercase text-[10px] tracking-widest shadow-lg shadow-primary-light">Close Instructions</button>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Login;
