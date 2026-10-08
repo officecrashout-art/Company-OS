@@ -16,6 +16,17 @@ export interface ChangelogRelease {
 export const changelog: ChangelogRelease[] = [
   {
     date: '2026-10-08',
+    title: 'Phase 7 — Company Structure, Job Architecture & Dynamic RBAC',
+    entries: [
+      { type: 'feature', description: 'Established complete organizational hierarchy: Company (organizations) → Departments (hierarchical with parent-child support, managers, codes) → Teams → Employees.' },
+      { type: 'feature', description: 'Built complete Job Architecture model: Job Roles (career levels, employment types, reporting lines), versioned Job Descriptions (v1, v2 with responsibilities and requirements), Skills Matrix catalog, Core Competencies with observable behaviors, and measurable KPIs.' },
+      { type: 'feature', description: 'Introduced dynamic Role-Based Access Control (RBAC) with system and custom roles, permissions catalog, and interactive role-permission grant matrix.' },
+      { type: 'feature', description: 'Created database migration 0038_company_structure_and_job_architecture.sql and consolidated one-click migration script setup-complete-company-os-database.sql with complete RLS tenant isolation.' },
+      { type: 'improvement', description: 'Added OrgDepartments, OrgJobArchitecture, and OrgRolesPermissions modules into the Organization & Setup center with graceful offline and backward-compatible fallbacks.' },
+    ],
+  },
+  {
+    date: '2026-10-08',
     title: 'Establish OpenHRApp Foundation & Master Project Context',
     entries: [
       { type: 'improvement', description: 'Established Company OS master development specification (PROJECT_CONTEXT.md) in the repository root.' },

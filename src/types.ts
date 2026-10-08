@@ -109,6 +109,9 @@ export interface Team {
   name: string;
   leaderId: string;
   department?: string;
+  departmentId?: string;
+  description?: string;
+  isActive?: boolean;
   organizationId?: string;
 }
 
@@ -119,6 +122,7 @@ export interface User {
   email: string;
   role: Role;
   department: string;
+  departmentId?: string;
   designation: string;
   avatar?: string;
   username?: string;
@@ -476,4 +480,165 @@ export interface PerformanceReview {
   hrOverallRating?: HROverallRating;
   finalizedBy?: string;
   organizationId: string;
+}
+
+// ============================================================
+// COMPANY STRUCTURE & JOB ARCHITECTURE (PHASE 1 / 7)
+// ============================================================
+
+export interface Department {
+  id: string;
+  organizationId: string;
+  name: string;
+  code?: string;
+  description?: string;
+  managerId?: string;
+  managerName?: string;
+  parentId?: string;
+  parentName?: string;
+  isActive: boolean;
+  displayOrder?: number;
+  created?: string;
+  updated?: string;
+  // Computed stats
+  employeeCount?: number;
+  teamCount?: number;
+}
+
+export interface RoleEntity {
+  id: string;
+  organizationId?: string;
+  name: string;
+  code: string;
+  description?: string;
+  isSystem: boolean;
+  created?: string;
+  updated?: string;
+}
+
+export interface Permission {
+  id: string;
+  module: string;
+  action: string;
+  code: string;
+  name: string;
+  description?: string;
+  created?: string;
+}
+
+export interface RolePermission {
+  id: string;
+  roleId: string;
+  permissionId: string;
+  permission?: Permission;
+}
+
+export interface JobRole {
+  id: string;
+  organizationId: string;
+  departmentId?: string;
+  departmentName?: string;
+  title: string;
+  roleCode?: string;
+  careerLevel: string;
+  employmentType: string;
+  reportsToRoleId?: string;
+  reportsToRoleTitle?: string;
+  isActive: boolean;
+  currentVersion?: number;
+  created?: string;
+  updated?: string;
+}
+
+export interface JobDescription {
+  id: string;
+  jobRoleId: string;
+  version: number;
+  purpose?: string;
+  responsibilities: string[];
+  requirements: string[];
+  effectiveFrom: string;
+  effectiveTo?: string;
+  isCurrent: boolean;
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  created?: string;
+  updated?: string;
+}
+
+export interface Skill {
+  id: string;
+  organizationId: string;
+  name: string;
+  category: 'Technical' | 'Domain' | 'Leadership' | 'Communication' | 'Tools' | string;
+  description?: string;
+  isActive: boolean;
+  created?: string;
+  updated?: string;
+}
+
+export interface Competency {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  behaviors: string[];
+  isActive: boolean;
+  created?: string;
+  updated?: string;
+}
+
+export interface KPI {
+  id: string;
+  organizationId: string;
+  jobRoleId?: string;
+  jobRoleTitle?: string;
+  name: string;
+  description?: string;
+  metricUnit?: string;
+  targetValue?: string;
+  frequency: string;
+  isActive: boolean;
+  created?: string;
+  updated?: string;
+}
+
+export interface JobRoleSkill {
+  id: string;
+  jobRoleId: string;
+  skillId: string;
+  skillName?: string;
+  category?: string;
+  requiredLevel: number; // 1-5
+  isMandatory: boolean;
+}
+
+export interface JobRoleCompetency {
+  id: string;
+  jobRoleId: string;
+  competencyId: string;
+  competencyName?: string;
+  expectedLevel: number; // 1-5
+}
+
+export interface EmployeeSkill {
+  id: string;
+  employeeId: string;
+  skillId: string;
+  skillName?: string;
+  category?: string;
+  selfRating?: number;
+  managerRating?: number;
+  verifiedBy?: string;
+  verifiedAt?: string;
+}
+
+export interface EmployeeJobAssignment {
+  id: string;
+  employeeId: string;
+  jobRoleId: string;
+  jobRoleTitle?: string;
+  jobDescriptionId?: string;
+  startDate: string;
+  endDate?: string;
+  isPrimary: boolean;
 }

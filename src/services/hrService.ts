@@ -9,7 +9,12 @@ import { reviewService } from './review.service';
 import { announcementService } from './announcement.service';
 import { notificationService } from './notification.service';
 import { superAdminService } from './superadmin.service';
+import { departmentService } from './department.service';
+import { roleService } from './role.service';
+import { jobArchitectureService } from './jobArchitecture.service';
 import { apiClient } from './api.client';
+
+export { departmentService, roleService, jobArchitectureService };
 
 export const hrService = {
   subscribe: apiClient.subscribe.bind(apiClient),
@@ -136,4 +141,9 @@ export const hrService = {
   sendBulkEmail: superAdminService.sendBulkEmail.bind(superAdminService),
   getRecentBulkCampaigns: superAdminService.getRecentBulkCampaigns.bind(superAdminService),
   getBulkCampaignDetail: superAdminService.getBulkCampaignDetail.bind(superAdminService),
+
+  // Company Structure & Job Architecture (Phase 7)
+  departmentService,
+  roleService,
+  jobArchitectureService,
 };

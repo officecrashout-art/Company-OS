@@ -19,9 +19,24 @@ import { OrgHolidays } from '../components/organization/OrgHolidays';
 import { OrgSystem } from '../components/organization/OrgSystem';
 import { OrgShifts } from '../components/organization/OrgShifts';
 import { OrgNotifications } from '../components/organization/OrgNotifications';
+import { OrgDepartments } from '../components/organization/OrgDepartments';
+import { OrgJobArchitecture } from '../components/organization/OrgJobArchitecture';
+import { OrgRolesPermissions } from '../components/organization/OrgRolesPermissions';
 import HelpButton from '../components/onboarding/HelpButton';
 
-type OrgTab = 'STRUCTURE' | 'TEAMS' | 'PLACEMENT' | 'SHIFTS' | 'WORKFLOW' | 'LEAVES' | 'HOLIDAYS' | 'NOTIFICATIONS' | 'SYSTEM';
+type OrgTab =
+  | 'DEPARTMENTS'
+  | 'TEAMS'
+  | 'JOB_ARCHITECTURE'
+  | 'PERMISSIONS'
+  | 'STRUCTURE'
+  | 'PLACEMENT'
+  | 'SHIFTS'
+  | 'WORKFLOW'
+  | 'LEAVES'
+  | 'HOLIDAYS'
+  | 'NOTIFICATIONS'
+  | 'SYSTEM';
 
 interface OrganizationProps {
   initialTab?: string;
@@ -54,7 +69,7 @@ const Organization: React.FC<OrganizationProps> = ({ initialTab }) => {
   const canWrite = canPerformAction('write');
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<OrgTab>((initialTab as OrgTab) || 'STRUCTURE');
+  const [activeTab, setActiveTab] = useState<OrgTab>((initialTab as OrgTab) || 'DEPARTMENTS');
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab as OrgTab);
@@ -232,13 +247,13 @@ const Organization: React.FC<OrganizationProps> = ({ initialTab }) => {
       </header>
 
       <div className="space-y-2">
-        {/* Row 1 — Structure & Teams */}
+        {/* Row 1 — Structure & Job Architecture */}
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">Structure</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">Structure & Architecture</p>
           <div className="flex gap-2 p-1 bg-slate-100 rounded-xl overflow-x-auto no-scrollbar">
-            {(['STRUCTURE', 'TEAMS', 'PLACEMENT', 'SHIFTS'] as OrgTab[]).map(tab => (
+            {(['DEPARTMENTS', 'TEAMS', 'JOB_ARCHITECTURE', 'PERMISSIONS', 'STRUCTURE', 'PLACEMENT', 'SHIFTS'] as OrgTab[]).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-1 min-w-[90px] py-3 px-2 rounded-lg text-[10px] md:text-xs font-semibold uppercase tracking-widest transition-all whitespace-nowrap flex items-center justify-center gap-1 ${activeTab === tab ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                {tab.replace('_', ' ')}
+                {tab === 'JOB_ARCHITECTURE' ? 'Job Architecture' : tab.replace('_', ' ')}
                 {activeTab === tab && <HelpButton helpPointId={`org.${tab.toLowerCase()}`} size={12} variant="inline" />}
               </button>
             ))}
@@ -271,6 +286,23 @@ const Organization: React.FC<OrganizationProps> = ({ initialTab }) => {
       )}
 
       <div className="animate-in fade-in duration-300 w-full pb-20">
+        {activeTab === 'DEPARTMENTS' && (
+          <OrgDepartments
+            employees={employees}
+            teams={teams}
+            canWrite={canWrite}
+            onSyncDepartments={updateDepartments}
+          />
+        )}
+
+        {activeTab === 'JOB_ARCHITECTURE' && (
+          <OrgJobArchitecture canWrite={canWrite} />
+        )}
+
+        {activeTab === 'PERMISSIONS' && (
+          <OrgRolesPermissions canWrite={canWrite} />
+        )}
+
         {activeTab === 'STRUCTURE' && (
           <OrgStructure 
             departments={departments} designations={designations}
